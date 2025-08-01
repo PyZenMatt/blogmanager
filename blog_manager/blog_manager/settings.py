@@ -1,4 +1,5 @@
 import os
+import os
 from dotenv import load_dotenv
 load_dotenv()
 # Configurazione email (caricare valori reali da variabili ambiente in produzione)
@@ -72,10 +73,18 @@ SECRET_KEY = 'django-insecure-9gljqs8)garszg2l8wu5q@lfn92j21-3eh#e941v@ev@fle2mt
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+
+# Imposta i domini reali in produzione
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    'messymind.it',
+    'matteoricci.net',
+]
 
 
 # Application definition
+
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -86,6 +95,11 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'contact',
     'corsheaders',
+    'blog',
+    'rest_framework',
+    'django_filters',
+    'cloudinary',
+    'cloudinary_storage',
 ]
 
 MIDDLEWARE = [
@@ -98,11 +112,33 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
 # CORS settings for Jekyll domains
 CORS_ALLOWED_ORIGINS = [
     "https://messymind.it",
     "https://matteoricci.net",
 ]
+# (Opzionale) Permetti sottodomini:
+# CORS_ALLOWED_ORIGIN_REGEXES = [r"^https://.*\\.messymind\\.it$", r"^https://.*\\.matteoricci\\.net$"]
+# REST Framework & sicurezza API
+REST_FRAMEWORK = {
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '10/minute',  # Limita a 10 richieste/minuto per IP
+    },
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend'
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
+}
+
+# Forza HTTPS in produzione
+SECURE_SSL_REDIRECT = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
 
 ROOT_URLCONF = 'blog_manager.urls'
 
@@ -168,8 +204,22 @@ USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
+# Static files (CSS, JavaScript, Images)
+# https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+
+# Cloudinary media storage
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+# MEDIA_URL = os.environ.get('MEDIA_URL', f'https://res.cloudinary.com/{os.environ.get("CLOUDINARY_CLOUD_NAME")}/media/')
+
+# Cloudinary config (usa variabili d'ambiente per sicurezza)
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME', 'dkoc4knvv'),
+    'API_KEY': os.environ.get('CLOUDINARY_API_KEY', '329431582423139'),
+    'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET', 'FCFJ2eGP4AdRKrJaPmEvV4vM200'),
+    'SECURE': True,
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
