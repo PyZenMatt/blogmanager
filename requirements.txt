@@ -6,7 +6,7 @@ Django==5.2.4
 django-cloudinary-storage==0.3.0
 django-cors-headers==4.7.0
 django-filter==25.1
-djangorestframework==3.16.0
+djangorestframework==3.16.1
 idna==3.10
 iniconfig==2.1.0
 packaging==25.0
