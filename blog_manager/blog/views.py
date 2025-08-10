@@ -1,17 +1,15 @@
 from rest_framework import generics, filters
 from rest_framework.parsers import MultiPartParser, FormParser
-from .models import PostImage, Site, Category, Author, Post, Comment
-from .serializers import PostImageSerializer, SiteSerializer, CategorySerializer, AuthorSerializer, PostSerializer, CommentSerializer
+from .models import PostImage, Site, Category, Author, Post, Comment, Tag
+from .serializers import PostImageSerializer, SiteSerializer, CategorySerializer, AuthorSerializer, PostSerializer, CommentSerializer, TagSerializer
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.viewsets import ModelViewSet
 
 # ENDPOINT API PER UPLOAD IMMAGINI (PostImage)
 class PostImageCreateView(generics.CreateAPIView):
     queryset = PostImage.objects.all()
     serializer_class = PostImageSerializer
     parser_classes = (MultiPartParser, FormParser)
-from .models import Site, Category, Author, Post, Comment
-from .serializers import SiteSerializer, CategorySerializer, AuthorSerializer, PostSerializer, CommentSerializer
-from django_filters.rest_framework import DjangoFilterBackend
 
 # SITES
 class SiteListView(generics.ListAPIView):
@@ -78,3 +76,12 @@ class CommentListView(generics.ListAPIView):
 
 class CommentCreateView(generics.CreateAPIView):
     serializer_class = CommentSerializer
+
+# TAGS
+class TagViewSet(ModelViewSet):
+    queryset = Tag.objects.all()
+    serializer_class = TagSerializer
+
+class PostViewSet(ModelViewSet):
+    queryset = Post.objects.all()
+    serializer_class = PostSerializer

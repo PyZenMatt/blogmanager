@@ -1,5 +1,11 @@
 from django.urls import path
 from . import views
+from rest_framework.routers import DefaultRouter
+from .views import TagViewSet, PostViewSet
+
+router = DefaultRouter()
+router.register(r'tags', TagViewSet, basename='tag')
+router.register(r'posts', PostViewSet, basename='post')
 
 urlpatterns = [
     # Sites
@@ -13,7 +19,6 @@ urlpatterns = [
     path('authors/', views.AuthorListView.as_view(), name='author-list'),
 
     # Posts
-    path('posts/', views.PostListView.as_view(), name='post-list'),
     path('posts/<slug:slug>/', views.PostDetailView.as_view(), name='post-detail'),
 
     # Comments (opzionale)
@@ -23,3 +28,5 @@ urlpatterns = [
     # Upload immagini (PostImage)
     path('postimages/', views.PostImageCreateView.as_view(), name='postimage-create'),
 ]
+
+urlpatterns += router.urls

@@ -1,0 +1,270 @@
+{% load static %}
+<!doctype html>
+<html lang="it">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Nuovo Post</title>
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+	<!-- EasyMDE (Markdown WYSIWYG) -->
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+</head>
+<body class="bg-light">
+<nav class="navbar navbar-expand-lg bg-white border-bottom">
+	<div class="container">
+		<a class="navbar-brand" href="#">Writer</a>
+		<div class="ms-auto">
+			<form method="post" action="{% url 'writer:logout' %}" class="d-inline">
+				{% csrf_token %}
+				<button class="btn btn-outline-secondary btn-sm" type="submit">Logout</button>
+			</form>
+		</div>
+	</div>
+</nav>
+
+<div class="container py-4">
+	<div id="result"></div>
+
+	<div class="card shadow-sm">
+		<div class="card-body">
+			<h1 class="h4 mb-4">Crea nuovo post</h1>
+			<form id="post-form" class="needs-validation" novalidate>
+				{% csrf_token %}
+				<div class="row g-3">
+					<div class="col-md-8">
+						<label class="form-label">Title</label>
+						<input name="title" id="title" class="form-control" required>
+						<div class="invalid-feedback">Titolo obbligatorio.</div>
+					</div>
+					<div class="col-md-4">
+						<label class="form-label">Slug</label>
+						<input name="slug" id="slug" class="form-control" placeholder="auto dal titolo">
+					</div>
+
+					<div class="col-md-4">
+						<label class="form-label">Site</label>
+						<select name="site" id="siteSelect" class="form-select" required></select>
+						<div class="invalid-feedback">Seleziona un sito.</div>
+					</div>
+
+					<div class="col-md-4">
+						<label class="form-label">Author</label>
+						<select name="author" id="authorSelect" class="form-select" required></select>
+						<div class="invalid-feedback">Seleziona un autore.</div>
+					</div>
+
+					<div class="col-md-4">
+						<label class="form-label">Status</label>
+						<select name="status" class="form-select">
+							<option value="draft">draft</option>
+							<option value="published">published</option>
+						</select>
+					</div>
+
+					<div class="col-md-12">
+						<label class="form-label">Categories</label>
+						<select multiple name="categories" id="catSelect" class="form-select"></select>
+						<div class="form-text">Tieni premuto Ctrl/Cmd per selezioni multiple.</div>
+					</div>
+
+					<div class="col-md-6">
+						<label class="form-label">Published at</label>
+						<input type="datetime-local" name="published_at" class="form-control">
+					</div>
+
+					<div class="col-md-6">
+						<label class="form-label">Cover image URL (Cloudinary)</label>
+						<input name="cover_image_url" class="form-control" placeholder="https://res.cloudinary.com/...">
+					</div>
+
+					<div class="col-md-6">
+						<label class="form-label">Meta Title</label>
+						<input name="meta_title" id="meta_title" class="form-control" placeholder="Auto-filled if left blank">
+					</div>
+					<div class="col-md-6">
+						<label class="form-label">Meta Description</label>
+						<textarea name="meta_description" id="meta_description" class="form-control" rows="2" placeholder="Auto-filled if left blank"></textarea>
+					</div>
+					<div class="col-md-6">
+						<label class="form-label">Meta Keywords</label>
+						<input name="meta_keywords" id="meta_keywords" class="form-control" placeholder="Comma-separated keywords">
+					</div>
+					<div class="col-md-6">
+						<label class="form-label">Canonical URL</label>
+						<input name="canonical_url" id="canonical_url" class="form-control" placeholder="Auto-filled if left blank">
+					</div>
+					<div class="col-md-6">
+						<label class="form-label">OG Title</label>
+						<input name="og_title" id="og_title" class="form-control" placeholder="Auto-filled if left blank">
+					</div>
+					<div class="col-md-6">
+						<label class="form-label">OG Description</label>
+						<textarea name="og_description" id="og_description" class="form-control" rows="2" placeholder="Auto-filled if left blank"></textarea>
+					</div>
+					<div class="col-md-6">
+						<label class="form-label">OG Image URL</label>
+						<input name="og_image_url" id="og_image_url" class="form-control" placeholder="URL of the Open Graph image">
+					</div>
+					<div class="col-md-6">
+						<label class="form-label">Noindex</label>
+						<select name="noindex" id="noindex" class="form-select">
+							<option value="false" selected>No</option>
+							<option value="true">Yes</option>
+						</select>
+					</div>
+
+					<div class="col-12">
+						<label class="form-label">Body (Markdown)</label>
+						<textarea name="body" id="body" rows="12" required></textarea>
+						<div class="invalid-feedback">Inserisci il contenuto.</div>
+					</div>
+				</div>
+
+				<div class="d-flex align-items-center gap-2 mt-4">
+					<button class="btn btn-primary" type="submit" id="submitBtn">
+						<span class="spinner-border spinner-border-sm d-none" id="btnSpinner" role="status" aria-hidden="true"></span>
+						<span id="btnText">Crea post</span>
+					</button>
+					<button class="btn btn-outline-secondary" type="reset">Reset</button>
+				</div>
+			</form>
+		</div>
+	</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+	// CSRF helper (cookie)
+	function getCookie(name) {
+		const value = `; ${document.cookie}`; const parts = value.split(`; ${name}=`);
+		if (parts.length === 2) return parts.pop().split(';').shift();
+	}
+	const csrftoken = getCookie('csrftoken');
+
+	// EasyMDE init
+	const easyMDE = new EasyMDE({
+		element: document.getElementById('body'),
+		spellChecker: false,
+		autofocus: true,
+		status: false,
+		autosave: { enabled: false },
+		placeholder: "Scrivi in Markdown…",
+	});
+
+	// Auto-slug dal titolo
+	const titleInput = document.getElementById('title');
+	const slugInput  = document.getElementById('slug');
+	titleInput.addEventListener('input', () => {
+		if (slugInput.value.trim() !== "") return;
+		slugInput.value = titleInput.value
+			.toLowerCase()
+			.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+			.replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+	});
+
+	// Populate selects
+	async function loadOptions() {
+			const elResult = document.getElementById('result');
+			elResult.innerHTML = '<div class="alert alert-info">Carico dati…</div>';
+			try {
+				const [sites, cats, authors] = await Promise.all([
+					fetch('/api/blog/sites/').then(r=>r.json()),
+					fetch('/api/blog/categories/').then(r=>r.json()),
+					fetch('/api/blog/authors/').then(r=>r.json()),
+				]);
+
+			const siteSel = document.getElementById('siteSelect');
+			(sites.results || sites).forEach(s => siteSel.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name || s.title}</option>`));
+
+			const catSel = document.getElementById('catSelect');
+			(cats.results || cats).forEach(c => catSel.insertAdjacentHTML('beforeend', `<option value="${c.id}">${c.name || c.title}</option>`));
+
+			const authorSel = document.getElementById('authorSelect');
+			(authors.results || authors).forEach(a => authorSel.insertAdjacentHTML('beforeend', `<option value="${a.id}">${a.name || a.display_name}</option>`));
+
+			elResult.innerHTML = '';
+		} catch (e) {
+			elResult.innerHTML = `<div class="alert alert-danger">Errore nel caricamento opzioni: ${e}</div>`;
+		}
+	}
+	loadOptions();
+
+	// Helpers UI bottone submit
+	const btn = document.getElementById('submitBtn');
+	const btnSpinner = document.getElementById('btnSpinner');
+	const btnText = document.getElementById('btnText');
+	function setSubmitting(on) {
+		btn.disabled = on;
+		btnSpinner.classList.toggle('d-none', !on);
+		btnText.textContent = on ? 'Invio…' : 'Crea post';
+	}
+
+	// Validazione lato client (Bootstrap)
+	function setInvalid(name, msg) {
+		const field = document.querySelector(`[name="${name}"]`);
+		if (!field) return;
+		field.classList.add('is-invalid');
+		const feedback = field.parentElement.querySelector('.invalid-feedback');
+		if (feedback && msg) feedback.textContent = msg;
+	}
+	function clearInvalid() {
+		document.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
+	}
+
+	// Submit
+	document.getElementById('post-form').addEventListener('submit', async (e) => {
+		e.preventDefault();
+		clearInvalid();
+		setSubmitting(true);
+
+		const fd = new FormData(e.target);
+		const categories = Array.from(document.getElementById('catSelect').selectedOptions).map(o=>Number(o.value));
+		const payload = {
+			title: fd.get('title'),
+			slug: fd.get('slug') || null,
+			site: Number(fd.get('site')),
+			categories,
+			author: Number(fd.get('author')),
+			status: fd.get('status') || 'draft',
+			published_at: fd.get('published_at') ? new Date(fd.get('published_at')).toISOString() : null,
+			body: easyMDE.value(), // Markdown dal WYSIWYG
+			cover_image_url: fd.get('cover_image_url') || null,
+		};
+
+		const resBox = document.getElementById('result');
+
+		try {
+			const res = await fetch('/api/posts/', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-CSRFToken': csrftoken
+				},
+				credentials: 'same-origin',
+				body: JSON.stringify(payload)
+			});
+			const data = await res.json();
+
+			if (!res.ok) {
+				// Mostra messaggi 400 field->error
+				if (res.status === 400 && data) {
+					Object.entries(data).forEach(([field, messages]) => {
+						setInvalid(field, Array.isArray(messages) ? messages.join(', ') : String(messages));
+					});
+				}
+				resBox.innerHTML = `<div class="alert alert-danger">❌ Errore creazione: <pre class="mb-0">${JSON.stringify(data, null, 2)}</pre></div>`;
+			} else {
+				resBox.innerHTML = `<div class="alert alert-success">✅ Post creato: ID <b>${data.id}</b></div>`;
+				e.target.reset();
+				easyMDE.value('');
+			}
+		} catch (err) {
+			resBox.innerHTML = `<div class="alert alert-danger">❌ Network error: ${err}</div>`;
+		} finally {
+			setSubmitting(false);
+		}
+	});
+</script>
+</body>
+</html>

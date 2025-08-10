@@ -1,9 +1,31 @@
 import os
+
 from dotenv import load_dotenv
 load_dotenv()
 
+# Sicurezza accesso GitHub: il token deve essere solo in env e mai stampato in chiaro
+def mask_token(token):
+    if token and len(token) > 8:
+        return token[:4] + '***MASKED***'
+    return token
 
+# Lettura sicura del token GitHub
+GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
+
+# Esempio di logging sicuro (non stampare mai il token in chiaro)
+import logging
+if GITHUB_TOKEN:
+    logging.info(f"GitHub token: {mask_token(GITHUB_TOKEN)}")
+
+
+# Email backend settings
 EMAIL_BACKEND = "anymail.backends.mailersend.EmailBackend"
+
+# Imposta l'email backend su console per l'ambiente di sviluppo
+if os.environ.get('DJANGO_ENV') == 'development':
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+    DEFAULT_FROM_EMAIL = "no-reply@blogmanager.local"
+
 
 SECRET_KEY = os.environ.get('SECRET_KEY')
 ANYMAIL = {
@@ -101,6 +123,7 @@ INSTALLED_APPS = [
     'cloudinary',
     'cloudinary_storage',
     'rest_framework.authtoken',
+    'writer',
 ]
 
 MIDDLEWARE = [
@@ -114,6 +137,8 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+MIDDLEWARE.insert(0, "writer.middleware.LoginRateLimitMiddleware")
+
 # CORS settings for Jekyll domains
 CORS_ALLOWED_ORIGINS = [
     "https://messymind.it",
@@ -124,6 +149,7 @@ CORS_ALLOWED_ORIGINS = [
 # REST Framework & sicurezza API
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.TokenAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
@@ -152,7 +178,10 @@ ROOT_URLCONF = 'blog_manager.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+    'DIRS': [
+        BASE_DIR / 'blog_manager' / 'writer' / 'templates',
+        BASE_DIR / 'blog_manager' / 'writer',
+    ],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -163,6 +192,10 @@ TEMPLATES = [
         },
     },
 ]
+# Login settings for writer UI
+LOGIN_URL = "writer:login"
+LOGIN_REDIRECT_URL = "writer:post_new"
+LOGOUT_REDIRECT_URL = "writer:login"
 
 WSGI_APPLICATION = 'blog_manager.wsgi.application'
 
@@ -233,3 +266,9 @@ CLOUDINARY_STORAGE = {
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache"
+    }
+}
