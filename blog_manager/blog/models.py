@@ -55,6 +55,12 @@ class Post(models.Model):
     is_published = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
 
+    LANGUAGE_CHOICES = [
+        ("it", "Italiano"),
+        ("en", "English"),
+    ]
+    language = models.CharField(max_length=2, choices=LANGUAGE_CHOICES, default="it", help_text="Lingua dell'articolo")
+
     # Campi aggiuntivi per front matter ricco
     seo_title = models.CharField(max_length=200, blank=True)
     background = models.CharField(

@@ -1,0 +1,33 @@
+# Comandi utili cURL per Cloudinary
+
+# 1. Upload di un'immagine locale (upload_preset pubblico)
+curl -X POST "https://api.cloudinary.com/v1_1/<cloud_name>/image/upload" \
+  -F "file=@/percorso/alla/tua/immagine.jpg" \
+  -F "upload_preset=<upload_preset>"
+
+# 2. Upload con API Key e firma (più sicuro, richiede signature)
+# Genera la signature secondo la documentazione Cloudinary
+curl -X POST "https://api.cloudinary.com/v1_1/<cloud_name>/image/upload" \
+  -F "file=@/percorso/alla/tua/immagine.jpg" \
+  -F "api_key=<API_KEY>" \
+  -F "timestamp=$(date +%s)" \
+  -F "signature=<signature>"
+
+# 3. Upload di una immagine da URL remoto
+curl -X POST "https://api.cloudinary.com/v1_1/<cloud_name>/image/upload" \
+  -F "file=https://esempio.com/immagine.jpg" \
+  -F "upload_preset=<upload_preset>"
+
+# 4. Upload multiplo (in uno script bash)
+for img in *.jpg; do
+  curl -X POST "https://api.cloudinary.com/v1_1/<cloud_name>/image/upload" \
+    -F "file=@$img" \
+    -F "upload_preset=<upload_preset>"
+done
+
+# 5. Ottenere info su una risorsa (richiede API Key e Secret, metodo GET)
+curl -u <API_KEY>:<API_SECRET> \
+  "https://api.cloudinary.com/v1_1/<cloud_name>/resources/image/upload/<public_id>"
+
+# Sostituisci <cloud_name>, <upload_preset>, <API_KEY>, <API_SECRET>, <signature>, <public_id> con i tuoi valori.
+# Dopo ogni upload, Cloudinary restituisce un JSON con il campo "secure_url" che puoi usare nei tuoi post.

@@ -1,0 +1,46 @@
+# Tipo
+- name: "type: feature"   ; color: "0E8A16" ; description: "Nuova funzionalità"
+- name: "type: bug"       ; color: "D73A4A" ; description: "Correzione bug"
+- name: "type: refactor"  ; color: "A2EEEF" ; description: "Refactor senza cambi di behavior"
+- name: "type: docs"      ; color: "0075CA" ; description: "Documentazione"
+- name: "type: test"      ; color: "5319E7" ; description: "Test"
+- name: "type: chore"     ; color: "BFD4F2" ; description: "Manutenzione"
+- name: "type: perf"      ; color: "FBCA04" ; description: "Performance"
+- name: "type: security"  ; color: "8B0000" ; description: "Sicurezza"
+
+# Area
+- name: "area: backend"   ; color: "1D76DB"
+- name: "area: api"       ; color: "1D76DB"
+- name: "area: db"        ; color: "1D76DB"
+- name: "area: devops"    ; color: "1D76DB"
+- name: "area: scripts"   ; color: "1D76DB"
+- name: "area: content"   ; color: "1D76DB"
+- name: "area: seo"       ; color: "1D76DB"
+
+# Priorità
+- name: "priority: P0" ; color: "B60205" ; description: "Blocco produzione"
+- name: "priority: P1" ; color: "D93F0B"
+- name: "priority: P2" ; color: "FBCA04"
+- name: "priority: P3" ; color: "0E8A16"
+
+# Dimensione
+- name: "size: XS" ; color: "C2E0C6"
+- name: "size: S"  ; color: "C2E0C6"
+- name: "size: M"  ; color: "C2E0C6"
+- name: "size: L"  ; color: "C2E0C6"
+- name: "size: XL" ; color: "C2E0C6"
+
+# Rischio
+- name: "risk: safe-change" ; color: "0E8A16"
+- name: "risk: risky"       ; color: "D93F0B"
+
+# Stato
+- name: "status: ready"        ; color: "5319E7"
+- name: "status: in-progress"  ; color: "5319E7"
+- name: "status: blocked"      ; color: "5319E7"
+- name: "status: needs-review" ; color: "5319E7"
+
+# Ambiente
+- name: "env: local"      ; color: "0E8A16"
+- name: "env: staging"    ; color: "FBCA04"
+- name: "env: production" ; color: "D93F0B"

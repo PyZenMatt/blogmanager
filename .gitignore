@@ -3,3 +3,16 @@ instructions/
 
 # Ignore the .venv directory
 .venv/
+
+# Ignore the migrations directory
+blog_manager/contact/migrations/
+
+#Ignore the database file
+blog_manager/db.sqlite3
+
+#Ignore the .env file
+blog_manager/.env
+
+instructions.md
+
+

@@ -1,23 +1,22 @@
 import os
-import os
 from dotenv import load_dotenv
 load_dotenv()
-# Configurazione email (caricare valori reali da variabili ambiente in produzione)
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.example.com')
-EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'user@example.com')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', 'password')
-EMAIL_USE_TLS = False
-EMAIL_USE_SSL = True
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@example.com')
 
-# Esempio .env.example:
-# EMAIL_HOST=smtp.example.com
-# EMAIL_PORT=587
-# EMAIL_HOST_USER=your@email.com
-# EMAIL_HOST_PASSWORD=yourpassword
-# DEFAULT_FROM_EMAIL=your@email.com
+
+EMAIL_BACKEND = "anymail.backends.mailersend.EmailBackend"
+
+SECRET_KEY = os.environ.get('SECRET_KEY')
+ANYMAIL = {
+    "MAILERSEND_API_TOKEN": os.environ.get('MAILERSEND_API_TOKEN'),
+}
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL')
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://pyzenmatt.pythonanywhere.com",
+    # altri domini frontend se necessario
+]
+
+
 import sys
 LOGGING = {
     'version': 1,
@@ -96,10 +95,12 @@ INSTALLED_APPS = [
     'contact',
     'corsheaders',
     'blog',
+    'anymail',
     'rest_framework',
     'django_filters',
     'cloudinary',
     'cloudinary_storage',
+    'rest_framework.authtoken',
 ]
 
 MIDDLEWARE = [
@@ -122,11 +123,17 @@ CORS_ALLOWED_ORIGINS = [
 # CORS_ALLOWED_ORIGIN_REGEXES = [r"^https://.*\\.messymind\\.it$", r"^https://.*\\.matteoricci\\.net$"]
 # REST Framework & sicurezza API
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAdminUser',
+    ],
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '10/minute',  # Limita a 10 richieste/minuto per IP
+        'anon': '10/minute',
     },
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend'
@@ -208,6 +215,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'static'
 
 # Cloudinary media storage
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'

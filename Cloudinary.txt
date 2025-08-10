@@ -1,0 +1,4 @@
+Cloud name dkoc4knvv
+API key 687842212214952
+API secret fArEu-G1sxOMmRxMbCjuwqajHlk
+API environment variable CLOUDINARY_URL=cloudinary://687842212214952:fArEu-G1sxOMmRxMbCjuwqajHlk@dkoc4knvv
