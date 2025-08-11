@@ -28,11 +28,21 @@ class Site(models.Model):
     domain = models.URLField(unique=True)
 
     # Repo mapping fields
-    repo_owner = models.CharField(max_length=100, blank=True, help_text="GitHub owner/org")
-    repo_name = models.CharField(max_length=100, blank=True, help_text="GitHub repo name")
-    default_branch = models.CharField(max_length=100, default="main", help_text="Default branch")
-    posts_dir = models.CharField(max_length=100, default="_posts", help_text="Directory for posts")
-    media_dir = models.CharField(max_length=100, default="assets/img", help_text="Directory for media")
+    repo_owner = models.CharField(
+        max_length=100, blank=True, help_text="GitHub owner/org"
+    )
+    repo_name = models.CharField(
+        max_length=100, blank=True, help_text="GitHub repo name"
+    )
+    default_branch = models.CharField(
+        max_length=100, default="main", help_text="Default branch"
+    )
+    posts_dir = models.CharField(
+        max_length=100, default="_posts", help_text="Directory for posts"
+    )
+    media_dir = models.CharField(
+        max_length=100, default="assets/img", help_text="Directory for media"
+    )
     base_url = models.URLField(blank=True, help_text="Base URL for published site")
 
     MEDIA_STRATEGY_CHOICES = [
@@ -144,9 +154,13 @@ class Post(models.Model):
         ),
         default="https://res.cloudinary.com/dkoc4knvv/image/upload/v1/",
     )
-    tags = models.TextField(blank=True, help_text="Separare i tag con virgola o newline")
+    tags = models.TextField(
+        blank=True, help_text="Separare i tag con virgola o newline"
+    )
     description = models.TextField(blank=True)
-    keywords = models.TextField(blank=True, help_text="Separare le keyword con virgola o newline")
+    keywords = models.TextField(
+        blank=True, help_text="Separare le keyword con virgola o newline"
+    )
     canonical_url = models.URLField(blank=True)
     og_title = models.CharField(max_length=100, blank=True)
     og_description = models.CharField(max_length=200, blank=True)
@@ -170,6 +184,25 @@ class Post(models.Model):
         blank=True,
         null=True,
         help_text="Percorso ultimo file esportato su Jekyll",
+    )
+
+    # Audit pubblicazione
+    repo_path = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Percorso del file nel repo Jekyll (_posts/....md)",
+    )
+    last_commit_sha = models.CharField(
+        max_length=64,
+        blank=True,
+        null=True,
+        help_text="SHA dell'ultimo commit di pubblicazione",
+    )
+    exported_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Timestamp dell'ultima esportazione",
     )
 
     def clean(self):
@@ -204,17 +237,22 @@ class ExportJob(models.Model):
         ("pending", "Pending"),
     ]
 
-    post = models.ForeignKey("Post", on_delete=models.CASCADE, related_name="export_jobs")
+    post = models.ForeignKey(
+        "Post", on_delete=models.CASCADE, related_name="export_jobs"
+    )
     exported_at = models.DateTimeField(default=timezone.now)
     commit_sha = models.CharField(max_length=64, blank=True, null=True)
     repo_url = models.URLField(max_length=255, blank=True, null=True)
     branch = models.CharField(max_length=64, blank=True, null=True)
     path = models.CharField(max_length=255, blank=True, null=True)
-    export_status = models.CharField(max_length=16, choices=EXPORT_STATUS_CHOICES, default="pending")
+    export_status = models.CharField(
+        max_length=16, choices=EXPORT_STATUS_CHOICES, default="pending"
+    )
     export_error = models.TextField(blank=True, null=True)
 
     def __str__(self):
-        return f"ExportJob for Post {self.post_id} ({self.export_status})"
+        pid = getattr(self.post, "pk", None)
+        return f"ExportJob for Post {pid} ({self.export_status})"
 
 
 class Comment(models.Model):
@@ -231,7 +269,9 @@ class Comment(models.Model):
 # Immagini multiple per post
 class PostImage(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="images")
-    image = models.ImageField(upload_to=upload_to_post_image, storage=MediaCloudinaryStorage())
+    image = models.ImageField(
+        upload_to=upload_to_post_image, storage=MediaCloudinaryStorage()
+    )
     caption = models.CharField(max_length=200, blank=True)
 
     def save(self, *args, **kwargs):
@@ -271,7 +311,9 @@ def post_autofill(sender, instance, **kwargs):
             tags = []
     # Use meta fields if present, else fallback to seo_title, description, keywords
     meta_title = instance.meta_title or getattr(instance, "seo_title", None)
-    meta_description = instance.meta_description or getattr(instance, "description", None)
+    meta_description = instance.meta_description or getattr(
+        instance, "description", None
+    )
     meta_keywords = instance.meta_keywords or getattr(instance, "keywords", None)
     if not meta_title or not meta_description or not meta_keywords:
         mt, md, mk = meta_defaults(instance.title or "", body_plain, cats, tags)

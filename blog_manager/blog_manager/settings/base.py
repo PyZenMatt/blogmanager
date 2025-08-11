@@ -101,7 +101,9 @@ LOGOUT_REDIRECT_URL = "writer:login"
 WSGI_APPLICATION = "blog_manager.wsgi.application"
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -145,7 +147,8 @@ LOGGING = {
     "formatters": {
         "json": {
             "format": (
-                '{"time": "%(asctime)s", "level": "%(levelname)s", "name": "%(name)s", ' '"message": %(message)s}'
+                '{"time": "%(asctime)s", "level": "%(levelname)s", "name": "%(name)s", '
+                '"message": %(message)s}'
             ),
         },
     },

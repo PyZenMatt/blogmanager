@@ -32,7 +32,9 @@ class CategorySerializer(serializers.ModelSerializer):
             if self.instance:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
-                raise serializers.ValidationError({"slug": "Slug must be unique per site."})
+                raise serializers.ValidationError(
+                    {"slug": "Slug must be unique per site."}
+                )
         return attrs
 
     meta_title = serializers.CharField(required=False, allow_blank=True)
@@ -105,7 +107,9 @@ class PostSerializer(serializers.ModelSerializer):
         if not site and self.instance:
             site = getattr(self.instance, "site", None)
         if not site:
-            raise serializers.ValidationError("Site is required for slug uniqueness check.")
+            raise serializers.ValidationError(
+                "Site is required for slug uniqueness check."
+            )
         qs = Post.objects.filter(site=site, slug=value)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
@@ -115,7 +119,9 @@ class PostSerializer(serializers.ModelSerializer):
 
     site = serializers.PrimaryKeyRelatedField(queryset=Site.objects.all())
     author = serializers.PrimaryKeyRelatedField(queryset=Author.objects.all())
-    categories = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all(), many=True)
+    categories = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.all(), many=True
+    )
     body = serializers.CharField(source="content", required=True)
     # For GET, still provide nested serializers
     comments = CommentSerializer(many=True, read_only=True)

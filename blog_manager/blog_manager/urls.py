@@ -24,7 +24,9 @@ from blog.views import PostViewSet, SiteViewSet
 
 
 def root_redirect(request):
-    return redirect("writer:post_new" if request.user.is_authenticated else "writer:login")
+    return redirect(
+        "writer:post_new" if request.user.is_authenticated else "writer:login"
+    )
 
 
 router = DefaultRouter()

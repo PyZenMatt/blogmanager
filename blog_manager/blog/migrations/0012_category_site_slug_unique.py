@@ -20,6 +20,8 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="category",
-            index=models.Index(fields=["site", "slug"], name="blog_category_site_slug_idx"),
+            index=models.Index(
+                fields=["site", "slug"], name="blog_category_site_slug_idx"
+            ),
         ),
     ]

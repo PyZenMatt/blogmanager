@@ -1,8 +1,12 @@
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
-from django.shortcuts import redirect, render
+from django.http import HttpResponse, HttpResponseBadRequest
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
+
+from blog.models import Post
+from blog.services.publish import publish_post
 
 
 class BootstrapLoginView(auth_views.LoginView):
@@ -58,3 +62,15 @@ def taxonomy(request):
 @login_required
 def post_list(request):
     return render(request, "writer/posts_list.html")
+
+
+@login_required
+def republish(request, id: int):
+    if request.method != "POST":
+        return HttpResponseBadRequest("Invalid method")
+    post = get_object_or_404(Post, pk=id)
+    try:
+        res = publish_post(post)
+    except Exception as e:
+        return HttpResponse(f"Publish failed: {e}", status=500)
+    return redirect("writer:post_list")

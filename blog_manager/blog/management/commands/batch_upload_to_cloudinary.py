@@ -10,7 +10,9 @@ class Command(BaseCommand):
     help = "Batch upload local images to Cloudinary and update PostImage references."
 
     def add_arguments(self, parser):
-        parser.add_argument("--dir", type=str, help="Directory containing images to upload")
+        parser.add_argument(
+            "--dir", type=str, help="Directory containing images to upload"
+        )
 
     def handle(self, *args, **options):
         directory = options["dir"]
@@ -24,9 +26,15 @@ class Command(BaseCommand):
             # Find PostImage with matching file name (customize as needed)
             images = PostImage.objects.filter(image=filename)
             if not images.exists():
-                self.stdout.write(self.style.WARNING(f"No PostImage found for {filename}"))
+                self.stdout.write(
+                    self.style.WARNING(f"No PostImage found for {filename}")
+                )
                 continue
             for img in images:
                 with open(filepath, "rb") as f:
                     img.image.save(filename, File(f), save=True)
-                self.stdout.write(self.style.SUCCESS(f"Uploaded {filename} to Cloudinary for PostImage {img.id}"))
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"Uploaded {filename} to Cloudinary for PostImage {img.id}"
+                    )
+                )

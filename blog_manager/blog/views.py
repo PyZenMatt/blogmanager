@@ -87,7 +87,9 @@ class PostListView(generics.ListAPIView):
             queryset = queryset.filter(categories__slug=category)
         published = self.request.query_params.get("published")
         if published is not None:
-            queryset = queryset.filter(is_published=published.lower() in ["1", "true", "yes"])
+            queryset = queryset.filter(
+                is_published=published.lower() in ["1", "true", "yes"]
+            )
         return queryset.distinct()
 
 
@@ -207,7 +209,11 @@ class PostViewSet(ModelViewSet):
         new_slug = post.slug
         new_date = post.published_at
         site = post.site
-        filename = f"{new_date.strftime('%Y-%m-%d')}-{new_slug}.md" if new_date and new_slug else None
+        filename = (
+            f"{new_date.strftime('%Y-%m-%d')}-{new_slug}.md"
+            if new_date and new_slug
+            else None
+        )
         posts_dir = site.posts_dir if hasattr(site, "posts_dir") else "_posts"
         new_path = f"{posts_dir}/{filename}" if filename else None
 

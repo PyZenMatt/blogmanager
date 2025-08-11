@@ -146,7 +146,9 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="post",
-            index=models.Index(fields=["site", "slug"], name="blog_post_site_id_a32762_idx"),
+            index=models.Index(
+                fields=["site", "slug"], name="blog_post_site_id_a32762_idx"
+            ),
         ),
         migrations.AlterUniqueTogether(
             name="post",

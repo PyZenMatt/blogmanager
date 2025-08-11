@@ -35,7 +35,9 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="post",
             name="keywords",
-            field=models.TextField(blank=True, help_text="Separare le keyword con virgola o newline"),
+            field=models.TextField(
+                blank=True, help_text="Separare le keyword con virgola o newline"
+            ),
         ),
         migrations.AddField(
             model_name="post",
@@ -60,7 +62,9 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="post",
             name="tags",
-            field=models.TextField(blank=True, help_text="Separare i tag con virgola o newline"),
+            field=models.TextField(
+                blank=True, help_text="Separare i tag con virgola o newline"
+            ),
         ),
         migrations.AlterField(
             model_name="postimage",
