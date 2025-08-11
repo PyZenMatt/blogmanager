@@ -42,14 +42,20 @@ class BootstrapLogoutView(auth_views.LogoutView):
 def post_new(request):
     return render(request, "writer/post_new.html")
 
+
+  
 @login_required
 def post_edit(request, id):
     return render(request, "writer/post_edit.html", {"post_id": id})
 
+
+  
 @login_required
 def taxonomy(request):
+    
     return render(request, "writer/taxonomy.html")
 
+  
 @login_required
 def post_list(request):
     return render(request, "writer/posts_list.html")

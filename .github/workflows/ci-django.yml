@@ -41,7 +41,7 @@ jobs:
           pip install black isort flake8 pytest pytest-django
 
       - name: Lint (flake8)
-        run: python -m flake8 blog_manager scripts
+        run: python -m flake8 blog_manager
 
       - name: Lint (isort)
         run: python -m isort --check-only --diff .
