@@ -124,8 +124,8 @@ class Post(models.Model):
     og_image_url = models.URLField(blank=True)
     noindex = models.BooleanField(default=False)
         # Osservabilità export/build
-        export_status = models.CharField(max_length=16, choices=[("success", "Success"), ("failed", "Failed"), ("pending", "Pending")], default="pending", help_text="Stato export/build")
-        last_pages_build_url = models.URLField(max_length=255, blank=True, null=True, help_text="URL build/errore ultima pubblicazione")
+    export_status = models.CharField(max_length=16, choices=[("success", "Success"), ("failed", "Failed"), ("pending", "Pending")], default="pending", help_text="Stato export/build")
+    last_pages_build_url = models.URLField(max_length=255, blank=True, null=True, help_text="URL build/errore ultima pubblicazione")
 
     def clean(self):
         from django.core.exceptions import ValidationError
