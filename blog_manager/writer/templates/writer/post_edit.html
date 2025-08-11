@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block content %}
+<nav class="navbar navbar-expand-lg bg-white border-bottom mb-4">
+  <div class="container">
+    <a class="navbar-brand" href="#">Writer</a>
+    <div class="ms-auto d-flex gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'writer:post_list' %}">Lista post</a>
+      <form method="post" action="{% url 'writer:logout' %}" class="d-inline">
+        {% csrf_token %}
+        <button class="btn btn-outline-secondary btn-sm" type="submit">Logout</button>
+      </form>
+    </div>
+  </div>
+</nav>
+<div id="result"></div>
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h1 class="h4 mb-4">Modifica post</h1>
+    <form id="post-edit-form" class="needs-validation" novalidate>
+      {% csrf_token %}
+      <div class="row g-3">
+        <div class="col-md-8">
+          <label class="form-label">Title</label>
+          <input name="title" id="title" class="form-control" required>
+          <div class="invalid-feedback">Titolo obbligatorio.</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Slug</label>
+          <input name="slug" id="slug" class="form-control" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Site</label>
+          <select name="site" id="siteSelect" class="form-select" required></select>
+          <div class="invalid-feedback">Seleziona un sito.</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Author</label>
+          <select name="author" id="authorSelect" class="form-select" required></select>
+          <div class="invalid-feedback">Seleziona un autore.</div>
+        </div>
+        <div class="col-md-12">
+          <label class="form-label">Body</label>
+          <textarea name="body" id="body" class="form-control" rows="10" required></textarea>
+        </div>
+        <!-- Altri campi meta, SEO, etc. -->
+      </div>
+      <div class="mt-4">
+  <button type="submit" class="btn btn-primary">Salva modifiche</button>
+  <button type="button" id="republishBtn" class="btn btn-secondary ms-2">Re-publish</button>
+  <button type="button" id="draftBtn" class="btn btn-outline-secondary ms-2">Set as Draft</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
+<script>
+// Set as Draft logic
+document.getElementById('draftBtn').addEventListener('click', async function() {
+  const resBox = document.getElementById('result');
+  resBox.innerHTML = '';
+  try {
+    const res = await fetch(`/api/blog/posts/${postId}/`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCookie('csrftoken'),
+      },
+      body: JSON.stringify({ status: 'draft', is_published: false })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(JSON.stringify(data));
+    resBox.innerHTML = `<div class="alert alert-success">Post riportato a draft!</div>`;
+    loadPost();
+  } catch(e) {
+    resBox.innerHTML = `<div class="alert alert-danger">Errore: ${e}</div>`;
+  }
+});
+const postId = window.location.pathname.split('/').filter(Boolean).pop();
+let easyMDE;
+async function loadPost() {
+  const res = await fetch(`/api/blog/posts/${postId}/`);
+  const data = await res.json();
+  document.getElementById('title').value = data.title;
+  document.getElementById('slug').value = data.slug;
+  document.getElementById('body').value = data.body;
+  // ...popola altri campi...
+    easyMDE = new EasyMDE({ element: document.getElementById('body') });
+  }
+  loadPost();
+
+  // Populate selects (site, author)
+  async function loadOptions() {
+    const [sites, authors] = await Promise.all([
+      fetch('/api/sites/').then(r=>r.json()),
+      fetch('/api/blog/authors/').then(r=>r.json()),
+    ]);
+    const siteSel = document.getElementById('siteSelect');
+    (sites.results || sites).forEach(s => siteSel.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name || s.title}</option>`));
+    const authorSel = document.getElementById('authorSelect');
+    (authors.results || authors).forEach(a => authorSel.insertAdjacentHTML('beforeend', `<option value="${a.id}">${a.name || a.display_name}</option>`));
+  }
+  loadOptions();
+
+  // Republish logic
+  document.getElementById('republishBtn').addEventListener('click', async function() {
+    const resBox = document.getElementById('result');
+    resBox.innerHTML = '';
+    try {
+      const res = await fetch(`/api/blog/posts/${postId}/`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCookie('csrftoken'),
+        },
+        body: JSON.stringify({ status: 'published', is_published: true })
+      });
+      const data = await res.json();
+      if(!res.ok) throw new Error(JSON.stringify(data));
+      resBox.innerHTML = `<div class=\"alert alert-success\">Post ripubblicato!</div>`;
+      loadPost();
+    } catch(e) {
+      resBox.innerHTML = `<div class=\"alert alert-danger\">Errore: ${e}</div>`;
+    }
+  });
+
+  // CSRF cookie helper
+  function getCookie(name){const v=`; ${document.cookie}`.split(`; ${name}=`);if(v.length===2)return v.pop().split(';').shift();}
+
+// Submit PATCH
+const form = document.getElementById('post-edit-form');
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(form);
+  const payload = {
+    title: fd.get('title'),
+    slug: fd.get('slug'),
+    site: Number(fd.get('site')),
+    author: Number(fd.get('author')),
+    body: easyMDE.value(),
+    // ...altri campi...
+  };
+  const res = await fetch(`/api/blog/posts/${postId}/`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': '{{ csrf_token }}'
+    },
+    credentials: 'same-origin',
+    body: JSON.stringify(payload)
+  });
+  const resultBox = document.getElementById('result');
+  if (res.ok) {
+    resultBox.innerHTML = '<div class="alert alert-success">Post aggiornato!</div>';
+  } else {
+    let errorMsg = 'Errore salvataggio.';
+    try {
+      const errData = await res.json();
+      if (errData.detail) {
+        errorMsg = errData.detail;
+      } else if (typeof errData === 'string') {
+        errorMsg = errData;
+      } else if (typeof errData === 'object') {
+        errorMsg = Object.values(errData).flat().join('<br>');
+      }
+    } catch {}
+    resultBox.innerHTML = `<div class="alert alert-danger">${errorMsg}</div>`;
+  }
+});
+// Re-publish button
+const republishBtn = document.getElementById('republishBtn');
+republishBtn.addEventListener('click', async () => {
+  // PATCH vuoto per forzare re-export
+  const res = await fetch(`/api/blog/posts/${postId}/`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': '{{ csrf_token }}'
+    },
+    credentials: 'same-origin',
+    body: JSON.stringify({})
+  });
+  const resultBox = document.getElementById('result');
+  if (res.ok) {
+    resultBox.innerHTML = '<div class="alert alert-success">Post ripubblicato!</div>';
+  } else {
+    let errorMsg = 'Errore ripubblicazione.';
+    try {
+      const errData = await res.json();
+      if (errData.detail) {
+        errorMsg = errData.detail;
+      } else if (typeof errData === 'string') {
+        errorMsg = errData;
+      } else if (typeof errData === 'object') {
+        errorMsg = Object.values(errData).flat().join('<br>');
+      }
+    } catch {}
+    resultBox.innerHTML = `<div class="alert alert-danger">${errorMsg}</div>`;
+  }
+});
+</script>
+{% endblock %}

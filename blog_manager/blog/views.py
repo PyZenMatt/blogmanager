@@ -1,30 +1,38 @@
 from rest_framework import generics, filters
+from rest_framework.permissions import AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser
 from .models import PostImage, Site, Category, Author, Post, Comment, Tag
 from .serializers import PostImageSerializer, SiteSerializer, CategorySerializer, AuthorSerializer, PostSerializer, CommentSerializer, TagSerializer
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.viewsets import ModelViewSet
+from .permissions import IsPublisherForWriteOrReadOnly
 
 # ENDPOINT API PER UPLOAD IMMAGINI (PostImage)
 class PostImageCreateView(generics.CreateAPIView):
     queryset = PostImage.objects.all()
     serializer_class = PostImageSerializer
     parser_classes = (MultiPartParser, FormParser)
+    permission_classes = [AllowAny]
 
 # SITES
 class SiteListView(generics.ListAPIView):
     queryset = Site.objects.all()
     serializer_class = SiteSerializer
+    permission_classes = [AllowAny]
+    pagination_class = None
 
 class SiteDetailView(generics.RetrieveAPIView):
     queryset = Site.objects.all()
     serializer_class = SiteSerializer
+    permission_classes = [AllowAny]
 
 # CATEGORIES
 class CategoryListView(generics.ListAPIView):
     serializer_class = CategorySerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['site']
+    permission_classes = [AllowAny]
+    pagination_class = None
 
     def get_queryset(self):
         return Category.objects.all()
@@ -34,6 +42,8 @@ class AuthorListView(generics.ListAPIView):
     serializer_class = AuthorSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['site']
+    permission_classes = [AllowAny]
+    pagination_class = None
 
     def get_queryset(self):
         return Author.objects.all()
@@ -46,6 +56,7 @@ class PostListView(generics.ListAPIView):
     search_fields = ['title', 'slug', 'content']
     ordering_fields = ['published_at', 'updated_at']
     ordering = ['-published_at']
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         queryset = Post.objects.all()
@@ -60,28 +71,132 @@ class PostListView(generics.ListAPIView):
             queryset = queryset.filter(is_published=published.lower() in ['1', 'true', 'yes'])
         return queryset.distinct()
 
-class PostDetailView(generics.RetrieveAPIView):
+class PostDetailView(generics.RetrieveUpdateAPIView):
     queryset = Post.objects.all()
     serializer_class = PostSerializer
     lookup_field = 'slug'
+    permission_classes = [IsPublisherForWriteOrReadOnly]
 
 # COMMENTS (opzionale)
 class CommentListView(generics.ListAPIView):
     serializer_class = CommentSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['post']
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         return Comment.objects.all()
 
 class CommentCreateView(generics.CreateAPIView):
     serializer_class = CommentSerializer
+    permission_classes = [AllowAny]
 
 # TAGS
 class TagViewSet(ModelViewSet):
     queryset = Tag.objects.all()
     serializer_class = TagSerializer
 
+from rest_framework.viewsets import ModelViewSet
+from rest_framework.permissions import AllowAny
+from .models import Site, Category, Author, Post
+from .serializers import SiteSerializer, CategorySerializer, AuthorSerializer, PostSerializer
+from .permissions import IsPublisherForWriteOrReadOnly
+
+
+class SiteViewSet(ModelViewSet):
+    queryset = Site.objects.all()
+    serializer_class = SiteSerializer
+    permission_classes = [AllowAny]
+
+    def get_permissions(self):
+        if self.action in ["list", "retrieve"]:
+            return [AllowAny()]
+        return super().get_permissions()
+
+
+class CategoryViewSet(ModelViewSet):
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
+    permission_classes = [AllowAny]
+
+    def get_permissions(self):
+        if self.action in ["list", "retrieve"]:
+            return [AllowAny()]
+        return super().get_permissions()
+
+
+class AuthorViewSet(ModelViewSet):
+    queryset = Author.objects.all()
+    serializer_class = AuthorSerializer
+    permission_classes = [AllowAny]
+
+    def get_permissions(self):
+        if self.action in ["list", "retrieve"]:
+            return [AllowAny()]
+        return super().get_permissions()
+
+
 class PostViewSet(ModelViewSet):
+    def create(self, request, *args, **kwargs):
+        from rest_framework.response import Response
+        from rest_framework import status
+        from django.db import IntegrityError, transaction
+        serializer = self.get_serializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+            with transaction.atomic():
+                self.perform_create(serializer)
+        except IntegrityError as e:
+            return Response({'detail': 'Integrity error: ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=201, headers=headers)
     queryset = Post.objects.all()
     serializer_class = PostSerializer
+    permission_classes = [IsPublisherForWriteOrReadOnly]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['site', 'status']
+    search_fields = ['title', 'slug', 'content']
+    ordering_fields = ['published_at', 'updated_at']
+    ordering = ['-published_at']
+
+    def get_permissions(self):
+        # lettura per tutti, scrittura con permission custom
+        if self.action in ["list", "retrieve"]:
+            return [AllowAny()]
+        return [IsPublisherForWriteOrReadOnly()]
+
+    def partial_update(self, request, *args, **kwargs):
+        post = self.get_object()
+        self.check_object_permissions(request, post)
+        old_slug = post.slug
+        old_date = post.published_at
+        old_path = post.last_export_path
+
+        serializer = self.get_serializer(post, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        post.refresh_from_db()
+        # Calcola nuovo path Jekyll
+        new_slug = post.slug
+        new_date = post.published_at
+        site = post.site
+        filename = f"{new_date.strftime('%Y-%m-%d')}-{new_slug}.md" if new_date and new_slug else None
+        posts_dir = site.posts_dir if hasattr(site, 'posts_dir') else '_posts'
+        new_path = f"{posts_dir}/{filename}" if filename else None
+
+        # Se path cambia, gestisci rename
+        if old_path and new_path and old_path != new_path:
+            from .exporter import render_markdown
+            md_content = render_markdown(post, site)
+            post.last_export_path = new_path
+            post.save(update_fields=['last_export_path'])
+        elif new_path:
+            from .exporter import render_markdown
+            md_content = render_markdown(post, site)
+            post.last_export_path = new_path
+            post.save(update_fields=['last_export_path'])
+
+        return super().partial_update(request, *args, **kwargs)

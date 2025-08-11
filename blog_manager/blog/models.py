@@ -60,12 +60,18 @@ class Site(models.Model):
 class Category(models.Model):
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name='categories')
     name = models.CharField(max_length=100)
-    slug = models.SlugField(unique=True)
+    slug = models.SlugField()
     meta_title = models.CharField(max_length=70, blank=True)
     meta_description = models.CharField(max_length=180, blank=True)
 
     def __str__(self):
         return f"{self.name} ({self.site})"
+
+    class Meta:
+        unique_together = (('site', 'slug'),)
+        indexes = [
+            models.Index(fields=['site', 'slug']),
+        ]
 
 class Author(models.Model):
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name='authors')
@@ -79,6 +85,9 @@ class Author(models.Model):
         return f"{self.name} ({self.site})"
 
 class Post(models.Model):
+    meta_title = models.CharField(max_length=70, blank=True)
+    meta_description = models.CharField(max_length=180, blank=True)
+    meta_keywords = models.CharField(max_length=255, blank=True)
 
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name='posts')
     title = models.CharField(max_length=200)
@@ -126,6 +135,7 @@ class Post(models.Model):
         # Osservabilità export/build
     export_status = models.CharField(max_length=16, choices=[("success", "Success"), ("failed", "Failed"), ("pending", "Pending")], default="pending", help_text="Stato export/build")
     last_pages_build_url = models.URLField(max_length=255, blank=True, null=True, help_text="URL build/errore ultima pubblicazione")
+    last_export_path = models.CharField(max_length=255, blank=True, null=True, help_text="Percorso ultimo file esportato su Jekyll")
 
     def clean(self):
         from django.core.exceptions import ValidationError
@@ -207,12 +217,32 @@ def post_autofill(sender, instance, **kwargs):
         instance.slug = slugify_title(instance.title)
     body_plain = extract_plain(instance.content or '')
     cats = [c.name for c in instance.categories.all()] if instance.pk else []
-    tags = [t.name for t in instance.tags.all()] if instance.pk else []
-    if not instance.meta_title or not instance.meta_description or not instance.meta_keywords:
+    # Gestione robusta dei tag: supporta sia Taggit che stringa CSV
+    if not instance.pk:
+        tags = []
+    else:
+        t = getattr(instance, "tags", None)
+        if t is None:
+            tags = []
+        elif hasattr(t, "all"):
+            tags = [x.name for x in t.all()]
+        elif isinstance(t, str):
+            tags = [s.strip() for s in t.split(",") if s.strip()]
+        else:
+            tags = []
+    # Use meta fields if present, else fallback to seo_title, description, keywords
+    meta_title = instance.meta_title or getattr(instance, 'seo_title', None)
+    meta_description = instance.meta_description or getattr(instance, 'description', None)
+    meta_keywords = instance.meta_keywords or getattr(instance, 'keywords', None)
+    if not meta_title or not meta_description or not meta_keywords:
         mt, md, mk = meta_defaults(instance.title or '', body_plain, cats, tags)
-        instance.meta_title = instance.meta_title or mt
-        instance.meta_description = instance.meta_description or md
-        instance.meta_keywords = instance.meta_keywords or mk
+        instance.meta_title = meta_title or mt
+        instance.meta_description = meta_description or md
+        instance.meta_keywords = meta_keywords or mk
+    else:
+        instance.meta_title = meta_title
+        instance.meta_description = meta_description
+        instance.meta_keywords = meta_keywords
     if not instance.og_title:
         instance.og_title = instance.meta_title or instance.title or ''
     if not instance.og_description:

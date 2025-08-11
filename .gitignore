@@ -1,18 +1,75 @@
-# Ignore the instructions directory
-instructions/
 
-# Ignore the .venv directory
+# Django
+*.log
+*.pot
+*.pyc
+__pycache__/
+db.sqlite3
+/static/
+/media/
+*.sqlite3
+*.db
+*.pyo
+*.env
+.env*
+
+# Python
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+
+.eggs/
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Virtualenv
+venv/
+ENV/
+
 .venv/
 
-# Ignore the migrations directory
-blog_manager/contact/migrations/
+# VSCode
+.vscode/
 
-#Ignore the database file
-blog_manager/db.sqlite3
+# MacOS
+.DS_Store
 
-#Ignore the .env file
-blog_manager/.env
+# Others
+*.swp
+*.swo
+.idea/
 
-instructions.md
+# Secrets
+secrets.json
+secrets.env
+
+# Node
+node_modules/
+
+# System
+Thumbs.db
+
+# Test
+*.test
+
+# Misc
+uploads/
+
+# Ignore scripts output
+scripts/*.log
 
 

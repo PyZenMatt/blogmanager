@@ -1,6 +1,7 @@
 asgiref==3.9.1
 certifi==2025.7.14
 charset-normalizer==3.4.2
+mysqlclient>=2.2
 cloudinary==1.44.1
 Django==5.2.4
 django-cloudinary-storage==0.3.0

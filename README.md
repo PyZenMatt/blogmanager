@@ -1,6 +1,9 @@
 # Blog Manager – Django Headless Backend per Jekyll
 
+
 [![CI (Django)](https://github.com/PyZenMatt/blogmanager/actions/workflows/ci-django.yml/badge.svg)](https://github.com/PyZenMatt/blogmanager/actions/workflows/ci-django.yml)
+[![pre-commit enabled](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com/)
+[![Gitleaks](https://github.com/PyZenMatt/blogmanager/actions/workflows/gitleaks.yml/badge.svg)](https://github.com/PyZenMatt/blogmanager/actions/workflows/gitleaks.yml)
 
 ## Descrizione
 Blog Manager è un backend Django headless per la gestione di blog multi-sito, pensato per servire contenuti a front-end statici Jekyll tramite API RESTful. Ogni sito Jekyll consuma solo i dati di suo interesse, garantendo efficienza e scalabilità.
@@ -42,14 +45,28 @@ blog_manager/
    pip install -r requirements.txt
    ```
 4. **Configura le variabili ambiente:**
-   - Copia `.env.example` in `.env` e personalizza i valori.
-5. **Applica le migrazioni:**
+    - Copia `.env.example` in `.env` e personalizza i valori.
+
+5. **Imposta il modulo settings desiderato:**
+    - Sviluppo:
+       ```bash
+       export DJANGO_SETTINGS_MODULE=blog_manager.settings.dev
+       python manage.py migrate
+       python manage.py runserver
+       ```
+    - Produzione (es. PythonAnywhere):
+       ```bash
+       export DJANGO_SETTINGS_MODULE=blog_manager.settings.prod
+       python manage.py migrate
+       python manage.py runserver
+       ```
+    - Puoi anche impostare la variabile DJANGO_SETTINGS_MODULE direttamente nella configurazione del servizio (es. PythonAnywhere Web → Environment).
+
+6. **Installa e attiva pre-commit:**
    ```bash
-   python manage.py migrate
-   ```
-6. **Avvia il server di sviluppo:**
-   ```bash
-   python manage.py runserver
+   pip install pre-commit
+   pre-commit install
+   pre-commit run --all-files
    ```
 
 ## Roadmap e documentazione
@@ -58,7 +75,7 @@ blog_manager/
 - [Guida Assistant AI](./docs/AI_ASSISTANT.md)
 
 ## CI automatica
-La pipeline CI esegue linting (Black, Isort, Flake8), migrazioni e test (pytest/pytest-django o Django test) su Python 3.11 e 3.12 ad ogni push/PR. Vedi [instructions/CI_DJANGO.md](instructions/CI_DJANGO.md) per dettagli.
+La pipeline CI esegue linting (Black, Isort, Flake8), migrazioni e test (pytest/pytest-django o Django test) su Python 3.11 e 3.12 ad ogni push/PR. Inoltre, il workflow Gitleaks verifica l'assenza di segreti nei commit e nelle PR. Vedi [instructions/CI_DJANGO.md](instructions/CI_DJANGO.md) per dettagli.
 
 ## Best practice
 - Usa commit semantici (`feat:`, `fix:`, `test:`...)

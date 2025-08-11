@@ -27,7 +27,8 @@ class BootstrapLoginView(auth_views.LoginView):
         response = super().form_valid(form)
         if not remember:
             self.request.session.set_expiry(0)  # expire at browser close
-        return response
+        # Redirect to post list after login
+        return redirect("writer:post_list")
 
 class BootstrapLogoutView(auth_views.LogoutView):
     next_page = reverse_lazy("writer:login")
@@ -42,5 +43,13 @@ def post_new(request):
     return render(request, "writer/post_new.html")
 
 @login_required
+def post_edit(request, id):
+    return render(request, "writer/post_edit.html", {"post_id": id})
+
+@login_required
 def taxonomy(request):
     return render(request, "writer/taxonomy.html")
+
+@login_required
+def post_list(request):
+    return render(request, "writer/posts_list.html")

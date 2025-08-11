@@ -3,7 +3,7 @@ Exporter module for rendering Markdown with Jekyll-compatible front matter.
 """
 import yaml
 from blog.models import Post
-from utils.seo import slugify
+from blog.utils.seo import slugify_title
 
 
 def render_markdown(post, site):
@@ -19,10 +19,10 @@ def render_markdown(post, site):
     front_matter = {
         'title': post.title,
         'date': post.published_at.isoformat() if hasattr(post, 'published_at') and post.published_at else None,
-        'slug': slugify(post.title),
+    'slug': slugify_title(post.title),
         'description': getattr(post, 'description', None),
-        'tags': [t.name for t in getattr(post, 'tags', [])],
-        'categories': [c.name for c in getattr(post, 'categories', [])],
+    'tags': [t.name for t in post.tags.all()] if hasattr(post.tags, 'all') else post.tags,
+    'categories': [c.name for c in post.categories.all()] if hasattr(post.categories, 'all') else post.categories,
         # Usa sempre URL esterni per le immagini
         'image': getattr(post, 'image', None),
         'canonical': getattr(post, 'canonical_url', None),

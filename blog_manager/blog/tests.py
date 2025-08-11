@@ -27,12 +27,7 @@ def sample_data():
         is_published=True
     )
     post.categories.add(cat)
-    return {
-        "site": site,
-        "category": cat,
-        "author": author,
-        "post": post
-    }
+    return {"site": site, "category": cat, "author": author, "post": post}
 
 def test_sites_list(api_client, sample_data):
     url = reverse('site-list')
@@ -52,18 +47,16 @@ def test_post_detail(api_client, sample_data):
     assert resp.status_code == 200
     assert resp.data['slug'] == "test-post"
 
-def test_categories_list(api_client, sample_data):
+def test_categories_and_authors_list(api_client, sample_data):
     url = reverse('category-list')
     resp = api_client.get(url, {'site': sample_data['site'].id})
     assert resp.status_code == 200
     assert resp.data[0]['name'] == "Tech"
 
-
     url = reverse('author-list')
     resp = api_client.get(url, {'site': sample_data['site'].id})
     assert resp.status_code == 200
     assert resp.data[0]['name'] == "Mario Rossi"
-
 
 def test_post_status_transitions():
     User = get_user_model()
@@ -81,7 +74,7 @@ def test_post_status_transitions():
     assert post.reviewed_by == reviewer
     assert post.review_notes == "Looks good"
 
-    # Review to Published (should require published_at and is_published)
+    # Review to Published (requires published_at and is_published)
     post.status = "published"
     post.is_published = True
     post.published_at = timezone.now()
@@ -96,11 +89,8 @@ def test_post_publish_requires_published_at():
     post = Post.objects.create(site=site, title="NoPubDate", slug="nopubdate", author=author, content="Test", is_published=True)
     post.status = "published"
     post.published_at = None
-    try:
+    with pytest.raises(ValidationError):
         post.save()
-        assert False, "Should raise ValidationError for missing published_at"
-    except ValidationError:
-        pass
 
 def test_post_review_requires_reviewer():
     site = Site.objects.create(name="TestSite3", domain="https://testsite3.com")
@@ -108,8 +98,29 @@ def test_post_review_requires_reviewer():
     post = Post.objects.create(site=site, title="NoReviewer", slug="noreviewer", author=author, content="Test", is_published=False)
     post.status = "review"
     post.reviewed_by = None
-    try:
+    with pytest.raises(ValidationError):
         post.save()
-        assert False, "Should raise ValidationError for missing reviewer"
-    except ValidationError:
-        pass
+
+def test_author_cannot_publish(api_client, sample_data):
+    User = get_user_model()
+    author_user = User.objects.create_user(username="author1", password="pass")
+    author_user.groups.create(name="Author")
+    api_client.force_authenticate(user=author_user)
+
+    post = sample_data["post"]
+    url = reverse('post-detail', kwargs={'slug': post.slug})
+    resp = api_client.patch(url, {"is_published": True}, format='json')
+    assert resp.status_code == 403
+    assert "permission" in str(resp.data.get("detail", "")).lower()
+
+def test_publisher_can_publish(api_client, sample_data):
+    User = get_user_model()
+    publisher_user = User.objects.create_user(username="publisher1", password="pass")
+    publisher_user.groups.create(name="Publisher")
+    api_client.force_authenticate(user=publisher_user)
+
+    post = sample_data["post"]
+    url = reverse('post-detail', kwargs={'slug': post.slug})
+    resp = api_client.patch(url, {"is_published": True}, format='json')
+    assert resp.status_code in [200, 202]
+    assert resp.data["is_published"] is True

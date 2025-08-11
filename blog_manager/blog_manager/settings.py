@@ -101,7 +101,7 @@ ALLOWED_HOSTS = [
     '127.0.0.1',
     'messymind.it',
     'matteoricci.net',
-    "pyzenmatt.pythonanywhere.com",
+    "pyzenmatt.pythonanywhere.com"
 ]
 
 

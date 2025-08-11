@@ -1,0 +1,23 @@
+<form id="contactForm">
+  <input type="text" name="name" placeholder="Nome" required>
+  <input type="email" name="email" placeholder="Email" required>
+  <textarea name="message" placeholder="Messaggio" required></textarea>
+  <!-- Honeypot anti-spam -->
+  <input type="text" name="honeypot" style="display:none">
+  <button type="submit">Invia</button>
+</form>
+
+<script>
+document.getElementById('contactForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const form = e.target;
+  const data = {
+    name: form.name.value,
+    email: form.email.value,
+    message: form.message.value,
+    honeypot: form.honeypot.value
+  };
+  const response = await fetch("https://TUONOME.pythonanywhere.com/api/contact/submit/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
