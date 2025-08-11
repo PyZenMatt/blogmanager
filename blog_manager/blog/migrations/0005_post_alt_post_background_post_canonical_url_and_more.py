@@ -8,63 +8,65 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('blog', '0004_remove_post_image'),
+        ("blog", "0004_remove_post_image"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='post',
-            name='alt',
+            model_name="post",
+            name="alt",
             field=models.CharField(blank=True, max_length=200),
         ),
         migrations.AddField(
-            model_name='post',
-            name='background',
+            model_name="post",
+            name="background",
             field=models.CharField(blank=True, max_length=200),
         ),
         migrations.AddField(
-            model_name='post',
-            name='canonical_url',
+            model_name="post",
+            name="canonical_url",
             field=models.URLField(blank=True),
         ),
         migrations.AddField(
-            model_name='post',
-            name='description',
+            model_name="post",
+            name="description",
             field=models.TextField(blank=True),
         ),
         migrations.AddField(
-            model_name='post',
-            name='keywords',
-            field=models.TextField(blank=True, help_text='Separare le keyword con virgola o newline'),
+            model_name="post",
+            name="keywords",
+            field=models.TextField(blank=True, help_text="Separare le keyword con virgola o newline"),
         ),
         migrations.AddField(
-            model_name='post',
-            name='og_description',
+            model_name="post",
+            name="og_description",
             field=models.TextField(blank=True),
         ),
         migrations.AddField(
-            model_name='post',
-            name='og_title',
+            model_name="post",
+            name="og_title",
             field=models.CharField(blank=True, max_length=200),
         ),
         migrations.AddField(
-            model_name='post',
-            name='og_type',
+            model_name="post",
+            name="og_type",
             field=models.CharField(blank=True, max_length=50),
         ),
         migrations.AddField(
-            model_name='post',
-            name='seo_title',
+            model_name="post",
+            name="seo_title",
             field=models.CharField(blank=True, max_length=200),
         ),
         migrations.AddField(
-            model_name='post',
-            name='tags',
-            field=models.TextField(blank=True, help_text='Separare i tag con virgola o newline'),
+            model_name="post",
+            name="tags",
+            field=models.TextField(blank=True, help_text="Separare i tag con virgola o newline"),
         ),
         migrations.AlterField(
-            model_name='postimage',
-            name='image',
-            field=models.ImageField(storage=cloudinary_storage.storage.MediaCloudinaryStorage(), upload_to=blog.models.upload_to_post_image),
+            model_name="postimage",
+            name="image",
+            field=models.ImageField(
+                storage=cloudinary_storage.storage.MediaCloudinaryStorage(), upload_to=blog.models.upload_to_post_image
+            ),
         ),
     ]

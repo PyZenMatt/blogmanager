@@ -3,12 +3,16 @@ from blog.models import Post
 from blog.exporter import render_markdown
 from datetime import datetime
 
+
 class DummyTag:
     def __init__(self, name):
         self.name = name
+
+
 class DummyCategory:
     def __init__(self, name):
         self.name = name
+
 
 @pytest.fixture
 def published_post():
@@ -27,8 +31,9 @@ def published_post():
         og_description="OG Description",
         og_image="/images/og.jpg",
         noindex=False,
-        body="# Heading\nContent here."
+        body="# Heading\nContent here.",
     )
+
 
 @pytest.fixture
 def draft_post():
@@ -47,12 +52,14 @@ def draft_post():
         og_description=None,
         og_image=None,
         noindex=True,
-        body="Draft content."
+        body="Draft content.",
     )
+
 
 def test_render_markdown_published(snapshot, published_post):
     md = render_markdown(published_post, site={})
     snapshot.assert_match(md, "published_post.md")
+
 
 def test_render_markdown_draft(snapshot, draft_post):
     md = render_markdown(draft_post, site={})

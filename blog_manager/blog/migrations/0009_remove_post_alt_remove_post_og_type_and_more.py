@@ -6,61 +6,61 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('blog', '0008_tag'),
+        ("blog", "0008_tag"),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='post',
-            name='alt',
+            model_name="post",
+            name="alt",
         ),
         migrations.RemoveField(
-            model_name='post',
-            name='og_type',
+            model_name="post",
+            name="og_type",
         ),
         migrations.AddField(
-            model_name='author',
-            name='meta_description',
+            model_name="author",
+            name="meta_description",
             field=models.CharField(blank=True, max_length=180),
         ),
         migrations.AddField(
-            model_name='author',
-            name='meta_title',
+            model_name="author",
+            name="meta_title",
             field=models.CharField(blank=True, max_length=70),
         ),
         migrations.AddField(
-            model_name='category',
-            name='meta_description',
+            model_name="category",
+            name="meta_description",
             field=models.CharField(blank=True, max_length=180),
         ),
         migrations.AddField(
-            model_name='category',
-            name='meta_title',
+            model_name="category",
+            name="meta_title",
             field=models.CharField(blank=True, max_length=70),
         ),
         migrations.AddField(
-            model_name='post',
-            name='noindex',
+            model_name="post",
+            name="noindex",
             field=models.BooleanField(default=False),
         ),
         migrations.AddField(
-            model_name='post',
-            name='og_image_url',
+            model_name="post",
+            name="og_image_url",
             field=models.URLField(blank=True),
         ),
         migrations.AddField(
-            model_name='tag',
-            name='posts',
-            field=models.ManyToManyField(blank=True, related_name='tagged_posts', to='blog.post'),
+            model_name="tag",
+            name="posts",
+            field=models.ManyToManyField(blank=True, related_name="tagged_posts", to="blog.post"),
         ),
         migrations.AlterField(
-            model_name='post',
-            name='og_description',
+            model_name="post",
+            name="og_description",
             field=models.CharField(blank=True, max_length=200),
         ),
         migrations.AlterField(
-            model_name='post',
-            name='og_title',
+            model_name="post",
+            name="og_title",
             field=models.CharField(blank=True, max_length=100),
         ),
     ]

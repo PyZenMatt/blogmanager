@@ -6,13 +6,18 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('blog', '0005_post_alt_post_background_post_canonical_url_and_more'),
+        ("blog", "0005_post_alt_post_background_post_canonical_url_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='post',
-            name='background',
-            field=models.CharField(blank=True, default='https://res.cloudinary.com/dkoc4knvv/image/upload/v1/', help_text="Incolla qui l'URL Cloudinary dell'immagine di background. Es: https://res.cloudinary.com/dkoc4knvv/image/upload/v1/…", max_length=200),
+            model_name="post",
+            name="background",
+            field=models.CharField(
+                blank=True,
+                default="https://res.cloudinary.com/dkoc4knvv/image/upload/v1/",
+                help_text="Incolla qui l'URL Cloudinary dell'immagine di background. Es: https://res.cloudinary.com/dkoc4knvv/image/upload/v1/…",
+                max_length=200,
+            ),
         ),
     ]

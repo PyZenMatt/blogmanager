@@ -1,19 +1,24 @@
 import os
 
+
 from dotenv import load_dotenv
+
 load_dotenv()
+
 
 # Sicurezza accesso GitHub: il token deve essere solo in env e mai stampato in chiaro
 def mask_token(token):
     if token and len(token) > 8:
-        return token[:4] + '***MASKED***'
+        return token[:4] + "***MASKED***"
     return token
 
+
 # Lettura sicura del token GitHub
-GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 
 # Esempio di logging sicuro (non stampare mai il token in chiaro)
 import logging
+
 if GITHUB_TOKEN:
     logging.info(f"GitHub token: {mask_token(GITHUB_TOKEN)}")
 
@@ -22,16 +27,17 @@ if GITHUB_TOKEN:
 EMAIL_BACKEND = "anymail.backends.mailersend.EmailBackend"
 
 # Imposta l'email backend su console per l'ambiente di sviluppo
-if os.environ.get('DJANGO_ENV') == 'development':
+if os.environ.get("DJANGO_ENV") == "development":
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
     DEFAULT_FROM_EMAIL = "no-reply@blogmanager.local"
 
 
-SECRET_KEY = os.environ.get('SECRET_KEY')
+SECRET_KEY = os.environ.get("SECRET_KEY")
 ANYMAIL = {
-    "MAILERSEND_API_TOKEN": os.environ.get('MAILERSEND_API_TOKEN'),
+    "MAILERSEND_API_TOKEN": os.environ.get("MAILERSEND_API_TOKEN"),
 }
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL')
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL")
+
 
 CSRF_TRUSTED_ORIGINS = [
     "https://pyzenmatt.pythonanywhere.com",
@@ -40,30 +46,31 @@ CSRF_TRUSTED_ORIGINS = [
 
 
 import sys
+
 LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'json': {
-            'format': '{"time": "%(asctime)s", "level": "%(levelname)s", "name": "%(name)s", "message": %(message)s}',
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "json": {
+            "format": '{"time": "%(asctime)s", "level": "%(levelname)s", "name": "%(name)s", "message": %(message)s}',
         },
     },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'stream': sys.stdout,
-            'formatter': 'json',
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "stream": sys.stdout,
+            "formatter": "json",
         },
     },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
     },
-    'loggers': {
-        'django.core.mail': {
-            'handlers': ['console'],
-            'level': 'DEBUG',
-            'propagate': True,
+    "loggers": {
+        "django.core.mail": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": True,
         },
     },
 }
@@ -89,53 +96,47 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-9gljqs8)garszg2l8wu5q@lfn92j21-3eh#e941v@ev@fle2mt'
+SECRET_KEY = "django-insecure-9gljqs8)garszg2l8wu5q@lfn92j21-3eh#e941v@ev@fle2mt"
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
 
 # Imposta i domini reali in produzione
-ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
-    'messymind.it',
-    'matteoricci.net',
-    "pyzenmatt.pythonanywhere.com"
-]
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "messymind.it", "matteoricci.net", "pyzenmatt.pythonanywhere.com"]
 
 
 # Application definition
 
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'contact',
-    'corsheaders',
-    'blog',
-    'anymail',
-    'rest_framework',
-    'django_filters',
-    'cloudinary',
-    'cloudinary_storage',
-    'rest_framework.authtoken',
-    'writer',
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "contact",
+    "corsheaders",
+    "blog",
+    "anymail",
+    "rest_framework",
+    "django_filters",
+    "cloudinary",
+    "cloudinary_storage",
+    "rest_framework.authtoken",
+    "writer",
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
 MIDDLEWARE.insert(0, "writer.middleware.LoginRateLimitMiddleware")
@@ -149,24 +150,22 @@ CORS_ALLOWED_ORIGINS = [
 # CORS_ALLOWED_ORIGIN_REGEXES = [r"^https://.*\\.messymind\\.it$", r"^https://.*\\.matteoricci\\.net$"]
 # REST Framework & sicurezza API
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
-        'rest_framework.authentication.TokenAuthentication',
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+        "rest_framework.authentication.TokenAuthentication",
     ],
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAdminUser',
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAdminUser",
     ],
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
     ],
-    'DEFAULT_THROTTLE_RATES': {
-        'anon': '10/minute',
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "10/minute",
     },
-    'DEFAULT_FILTER_BACKENDS': [
-        'django_filters.rest_framework.DjangoFilterBackend'
-    ],
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 10,
+    "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 10,
 }
 
 # Forza HTTPS in produzione
@@ -174,21 +173,21 @@ SECURE_SSL_REDIRECT = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 
-ROOT_URLCONF = 'blog_manager.urls'
+ROOT_URLCONF = "blog_manager.urls"
 
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-    'DIRS': [
-        BASE_DIR / 'blog_manager' / 'writer' / 'templates',
-        BASE_DIR / 'blog_manager' / 'writer',
-    ],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [
+            BASE_DIR / "blog_manager" / "writer" / "templates",
+            BASE_DIR / "blog_manager" / "writer",
+        ],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
@@ -198,16 +197,16 @@ LOGIN_URL = "writer:login"
 LOGIN_REDIRECT_URL = "writer:post_new"
 LOGOUT_REDIRECT_URL = "writer:login"
 
-WSGI_APPLICATION = 'blog_manager.wsgi.application'
+WSGI_APPLICATION = "blog_manager.wsgi.application"
 
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
     }
 }
 
@@ -217,16 +216,16 @@ DATABASES = {
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
@@ -234,9 +233,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = "UTC"
 
 USE_I18N = True
 
@@ -248,28 +247,24 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'static'
+STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "static"
 
 # Cloudinary media storage
-DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
 # MEDIA_URL = os.environ.get('MEDIA_URL', f'https://res.cloudinary.com/{os.environ.get("CLOUDINARY_CLOUD_NAME")}/media/')
 
 # Cloudinary config (usa variabili d'ambiente per sicurezza)
 CLOUDINARY_STORAGE = {
-    'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME', 'dkoc4knvv'),
-    'API_KEY': os.environ.get('CLOUDINARY_API_KEY', '329431582423139'),
-    'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET', 'FCFJ2eGP4AdRKrJaPmEvV4vM200'),
-    'SECURE': True,
+    "CLOUD_NAME": os.environ.get("CLOUDINARY_CLOUD_NAME", "dkoc4knvv"),
+    "API_KEY": os.environ.get("CLOUDINARY_API_KEY", "329431582423139"),
+    "API_SECRET": os.environ.get("CLOUDINARY_API_SECRET", "FCFJ2eGP4AdRKrJaPmEvV4vM200"),
+    "SECURE": True,
 }
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache"
-    }
-}
+CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}

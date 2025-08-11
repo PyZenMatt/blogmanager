@@ -17,12 +17,8 @@ class BootstrapLoginView(auth_views.LoginView):
             classes = field.widget.attrs.get("class", "")
             field.widget.attrs["class"] = (classes + " form-control").strip()
             field.widget.attrs.setdefault("autocomplete", name)
-        form.fields["username"].widget.attrs.setdefault(
-            "placeholder", "Username"
-        )
-        form.fields["password"].widget.attrs.setdefault(
-            "placeholder", "Password"
-        )
+        form.fields["username"].widget.attrs.setdefault("placeholder", "Username")
+        form.fields["password"].widget.attrs.setdefault("placeholder", "Password")
         return form
 
     def form_valid(self, form):

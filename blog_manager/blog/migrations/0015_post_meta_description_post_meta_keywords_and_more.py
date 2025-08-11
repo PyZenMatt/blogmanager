@@ -6,23 +6,23 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('blog', '0014_post_last_export_path'),
+        ("blog", "0014_post_last_export_path"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='post',
-            name='meta_description',
+            model_name="post",
+            name="meta_description",
             field=models.CharField(blank=True, max_length=180),
         ),
         migrations.AddField(
-            model_name='post',
-            name='meta_keywords',
+            model_name="post",
+            name="meta_keywords",
             field=models.CharField(blank=True, max_length=255),
         ),
         migrations.AddField(
-            model_name='post',
-            name='meta_title',
+            model_name="post",
+            name="meta_title",
             field=models.CharField(blank=True, max_length=70),
         ),
     ]

@@ -8,17 +8,22 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('blog', '0002_post_image'),
+        ("blog", "0002_post_image"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='PostImage',
+            name="PostImage",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('image', models.ImageField(upload_to=blog.models.upload_to_post_image)),
-                ('caption', models.CharField(blank=True, max_length=200)),
-                ('post', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='images', to='blog.post')),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("image", models.ImageField(upload_to=blog.models.upload_to_post_image)),
+                ("caption", models.CharField(blank=True, max_length=200)),
+                (
+                    "post",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE, related_name="images", to="blog.post"
+                    ),
+                ),
             ],
         ),
     ]

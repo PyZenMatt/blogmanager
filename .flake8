@@ -1,0 +1,13 @@
+[flake8]
+max-line-length = 120
+extend-ignore = E203, W503
+exclude = .git,__pycache__,*/migrations/*,.venv
+per-file-ignores =
+    blog_manager/settings/dev.py: F403,F405,E501
+    blog_manager/settings/prod.py: F403,F405,E501,W191,E122
+    blog_manager/blog_manager/settings.py: E402,E305,E501,E122
+    blog_manager/blog/tests.py: E501,E302
+    blog_manager/blog/migrations/*: E501
+    blog_manager/blog/tests/test_exporter.py: E302
+    blog_manager/blog/tests/test_permissions.py: F401,F811,E302
+    blog_manager/blog_manager/tests/test_root_redirect.py: F401,F841

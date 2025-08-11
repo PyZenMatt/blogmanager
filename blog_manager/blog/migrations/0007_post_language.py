@@ -6,13 +6,18 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('blog', '0006_alter_post_background'),
+        ("blog", "0006_alter_post_background"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='post',
-            name='language',
-            field=models.CharField(choices=[('it', 'Italiano'), ('en', 'English')], default='it', help_text="Lingua dell'articolo", max_length=2),
+            model_name="post",
+            name="language",
+            field=models.CharField(
+                choices=[("it", "Italiano"), ("en", "English")],
+                default="it",
+                help_text="Lingua dell'articolo",
+                max_length=2,
+            ),
         ),
     ]

@@ -1,6 +1,7 @@
 from django.test import TestCase, Client
 from django.urls import reverse
 
+
 class RootRedirectTests(TestCase):
     def setUp(self):
         self.client = Client()
@@ -12,6 +13,7 @@ class RootRedirectTests(TestCase):
 
     def test_redirects_authenticated_to_post_new(self):
         from django.contrib.auth.models import User
+
         user = User.objects.create_user(username="testuser", password="testpass")
         self.client.login(username="testuser", password="testpass")
         response = self.client.get("/")

@@ -15,26 +15,27 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
-
 from django.contrib import admin
 from django.urls import path, include
 from django.shortcuts import redirect
 from rest_framework.routers import DefaultRouter
 from blog.views import SiteViewSet, PostViewSet
 
+
 def root_redirect(request):
     return redirect("writer:post_new" if request.user.is_authenticated else "writer:login")
 
+
 router = DefaultRouter()
-router.register(r'sites', SiteViewSet, basename='site')
-router.register(r'posts', PostViewSet, basename='post')
+router.register(r"sites", SiteViewSet, basename="site")
+router.register(r"posts", PostViewSet, basename="post")
 
 urlpatterns = [
-    path('', root_redirect),
-    path('admin/', admin.site.urls),
-    path('api/contact/', include('contact.urls')),
-    path('api/blog/', include('blog.urls')),
+    path("", root_redirect),
+    path("admin/", admin.site.urls),
+    path("api/contact/", include("contact.urls")),
+    path("api/blog/", include("blog.urls")),
     # Expose /api/sites/ (list/create) and /api/sites/<id>/ via DRF router
-    path('api/', include(router.urls)),
-    path('writer/', include('writer.urls', namespace='writer')),
+    path("api/", include(router.urls)),
+    path("writer/", include("writer.urls", namespace="writer")),
 ]

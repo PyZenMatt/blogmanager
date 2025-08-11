@@ -26,9 +26,7 @@ urlpatterns = [
     ),
     path(
         "password-reset/done/",
-        auth_views.PasswordResetDoneView.as_view(
-            template_name="writer/password_reset_done.html"
-        ),
+        auth_views.PasswordResetDoneView.as_view(template_name="writer/password_reset_done.html"),
         name="password_reset_done",
     ),
     path(
@@ -41,9 +39,7 @@ urlpatterns = [
     ),
     path(
         "reset/done/",
-        auth_views.PasswordResetCompleteView.as_view(
-            template_name="writer/password_reset_complete.html"
-        ),
+        auth_views.PasswordResetCompleteView.as_view(template_name="writer/password_reset_complete.html"),
         name="password_reset_complete",
     ),
     path("posts/", views.post_list, name="post_list"),
