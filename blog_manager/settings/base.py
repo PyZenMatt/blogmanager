@@ -12,18 +12,33 @@ environ.Env.read_env(os.getenv("ENV_FILE", ".env"))
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SECRET_KEY = env("SECRET_KEY")
-DEBUG = env.bool("DEBUG", False)
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
-DATABASES = {"default": env.db("DATABASE_URL", default=f"sqlite:///{BASE_DIR}/db.sqlite3")}
-CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
-CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=None) or []
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=None) or []
 CLOUDINARY_URL = env("CLOUDINARY_URL", default=None)
 GITHUB_TOKEN = env("GITHUB_TOKEN", default=None)
 EMAIL_HOST = env("EMAIL_HOST", default=None)
-EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_PORT = env.int("EMAIL_PORT", default=None) or 587
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default=None)
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default=None)
-EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=None)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default=None)
+DEBUG = env.bool("DEBUG") if "DEBUG" in os.environ else False
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS") if "ALLOWED_HOSTS" in os.environ else []
+DATABASES = {
+    "default": env.db("DATABASE_URL") if "DATABASE_URL" in os.environ else {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
+    }
+}
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=None) or []
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=None) or []
+CLOUDINARY_URL = env("CLOUDINARY_URL", default=None)
+GITHUB_TOKEN = env("GITHUB_TOKEN", default=None)
+EMAIL_HOST = env("EMAIL_HOST", default=None)
+EMAIL_PORT = env.int("EMAIL_PORT", default=None) or 587
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default=None)
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default=None)
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=None)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default=None)
 
 INSTALLED_APPS = [
@@ -82,10 +97,18 @@ LOGOUT_REDIRECT_URL = "writer:login"
 WSGI_APPLICATION = 'blog_manager.wsgi.application'
 
 AUTH_PASSWORD_VALIDATORS = [
-    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
+    {
+        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'
+    },
 ]
 
 LANGUAGE_CODE = 'en-us'
@@ -98,7 +121,11 @@ STATIC_ROOT = BASE_DIR / 'static'
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache"
+    }
+}
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -128,7 +155,10 @@ LOGGING = {
     'disable_existing_loggers': False,
     'formatters': {
         'json': {
-            'format': '{"time": "%(asctime)s", "level": "%(levelname)s", "name": "%(name)s", "message": %(message)s}',
+            'format': (
+                '{"time": "%(asctime)s", "level": "%(levelname)s", "name": "%(name)s", '
+                '"message": %(message)s}'
+            ),
         },
     },
     'handlers': {

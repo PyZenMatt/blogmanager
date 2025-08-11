@@ -16,12 +16,21 @@ logger = logging.getLogger(__name__)
 def contact_submit(request):
     if request.method != "POST":
         logger.info("Method not allowed", extra={"method": request.method})
-        return JsonResponse({"success": False, "error": "Only POST allowed"}, status=405)
+        return JsonResponse(
+            {"success": False, "error": "Only POST allowed"},
+            status=405
+        )
     try:
         data = json.loads(request.body)
     except Exception:
-        logger.warning("Invalid JSON", extra={"body": request.body.decode(errors='ignore')})
-        return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
+        logger.warning(
+            "Invalid JSON",
+            extra={"body": request.body.decode(errors='ignore')}
+        )
+        return JsonResponse(
+            {"success": False, "error": "Invalid JSON"},
+            status=400
+        )
 
 
     name = data.get("name", "").strip()
@@ -30,21 +39,39 @@ def contact_submit(request):
     honeypot = data.get("honeypot", "")
 
     if honeypot:
-        logger.warning("Honeypot triggered", extra={"ip": request.META.get('REMOTE_ADDR')})
-        return JsonResponse({"success": False, "error": "Spam detected"}, status=400)
+        logger.warning(
+            "Honeypot triggered",
+            extra={"ip": request.META.get('REMOTE_ADDR')}
+        )
+        return JsonResponse(
+            {"success": False, "error": "Spam detected"},
+            status=400
+        )
 
     if not name or len(name) > 100:
         logger.info("Invalid name", extra={"name": name})
-        return JsonResponse({"success": False, "error": "Invalid name"}, status=400)
+        return JsonResponse(
+            {"success": False, "error": "Invalid name"},
+            status=400
+        )
     if not email or not EMAIL_REGEX.match(email):
         logger.info("Invalid email", extra={"email": email})
-        return JsonResponse({"success": False, "error": "Invalid email"}, status=400)
+        return JsonResponse(
+            {"success": False, "error": "Invalid email"},
+            status=400
+        )
     if not message or len(message) < 5:
         logger.info("Message too short", extra={"message": message})
-        return JsonResponse({"success": False, "error": "Message too short"}, status=400)
+        return JsonResponse(
+            {"success": False, "error": "Message too short"},
+            status=400
+        )
 
     ContactMessage.objects.create(name=name, email=email, message=message)
-    logger.info("Contact message saved", extra={"user_name": name, "user_email": email})
+    logger.info(
+        "Contact message saved",
+        extra={"user_name": name, "user_email": email}
+    )
 
     # Invio email di notifica
     try:
@@ -56,7 +83,10 @@ def contact_submit(request):
             recipient_list=[recipient] if recipient else [],
             fail_silently=True,
         )
-        logger.info("Notifica email inviata", extra={"user_email": email, "recipient": recipient})
+        logger.info(
+            "Notifica email inviata",
+            extra={"user_email": email, "recipient": recipient}
+        )
     except Exception as e:
         logger.error("Errore invio email", extra={"error": str(e)})
 

@@ -8,7 +8,11 @@ app_name = "writer"
 urlpatterns = [
     path("login/", BootstrapLoginView.as_view(), name="login"),
     path("logout/", BootstrapLogoutView.as_view(), name="logout"),
-    path("new/", views.post_new, name="post_new"),  # Already protected by @login_required
+    path(
+        "new/",
+        views.post_new,
+        name="post_new",  # Already protected by @login_required
+    ),
     path("taxonomy/", views.taxonomy, name="taxonomy"),
     path(
         "password-reset/",

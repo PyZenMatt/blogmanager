@@ -20,20 +20,41 @@ class ContactSubmitAPITest(TestCase):
         self.url = "/api/contact/submit/"
 
     def test_successful_post(self):
-        data = {"name": "Mario", "email": "mario@example.com", "message": "Ciao!"}
-        response = self.client.post(self.url, data=json.dumps(data), content_type="application/json")
+        data = {
+            "name": "Mario",
+            "email": "mario@example.com",
+            "message": "Ciao!"
+        }
+        response = self.client.post(
+            self.url,
+            data=json.dumps(data),
+            content_type="application/json"
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["success"], True)
         self.assertEqual(ContactMessage.objects.count(), 1)
 
     def test_invalid_email(self):
         data = {"name": "Mario", "email": "not-an-email", "message": "Ciao!"}
-        response = self.client.post(self.url, data=json.dumps(data), content_type="application/json")
+        response = self.client.post(
+            self.url,
+            data=json.dumps(data),
+            content_type="application/json"
+        )
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.json()["success"])
 
     def test_honeypot(self):
-        data = {"name": "Mario", "email": "mario@example.com", "message": "Ciao!", "honeypot": "spam"}
-        response = self.client.post(self.url, data=json.dumps(data), content_type="application/json")
+        data = {
+            "name": "Mario",
+            "email": "mario@example.com",
+            "message": "Ciao!",
+            "honeypot": "spam"
+        }
+        response = self.client.post(
+            self.url,
+            data=json.dumps(data),
+            content_type="application/json"
+        )
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.json()["success"])
