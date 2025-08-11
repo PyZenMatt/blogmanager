@@ -40,12 +40,16 @@ class LoginRateLimitMiddlewareTest(TestCase):
 
     def test_different_users_and_ips(self):
         for _ in range(5):
-            request = self.factory.post("/writer/login/", {"username": "user1"})
+            request = self.factory.post(
+                "/writer/login/", {"username": "user1"}
+            )
             response = self.middleware(request)
             self.assertEqual(response.status_code, 200)
 
         # Another user should not be blocked
-        request = self.factory.post("/writer/login/", {"username": "user2"})
+        request = self.factory.post(
+            "/writer/login/", {"username": "user2"}
+        )
         response = self.middleware(request)
         self.assertEqual(response.status_code, 200)
 
