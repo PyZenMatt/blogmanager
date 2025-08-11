@@ -1,6 +1,7 @@
+from time import time
+
 from django.core.cache import cache
 from django.shortcuts import render
-from time import time
 
 MAX_ATTEMPTS = 5
 WINDOW_SEC = 600

@@ -12,8 +12,8 @@ def _ensure_permission_classes(monkeypatch, cls, perm):
 
 @pytest.fixture(autouse=True)
 def open_read_and_control_write(monkeypatch):
-    from rest_framework.permissions import AllowAny, SAFE_METHODS, BasePermission
     from blog import views as blog_views
+    from rest_framework.permissions import SAFE_METHODS, AllowAny, BasePermission
 
     # 1) Lettura pubblica garantita su Site/Category/Author
     for cls in [

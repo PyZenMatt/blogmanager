@@ -1,7 +1,8 @@
-from django.urls import path, reverse_lazy
 from django.contrib.auth import views as auth_views
-from .views import BootstrapLoginView, BootstrapLogoutView
+from django.urls import path, reverse_lazy
+
 from . import views
+from .views import BootstrapLoginView, BootstrapLogoutView
 
 app_name = "writer"
 

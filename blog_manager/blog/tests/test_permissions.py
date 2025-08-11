@@ -1,9 +1,9 @@
 import pytest
+from blog.models import Author, Category, Post, Site
+from django.contrib.auth.models import Group, User
 from django.urls import reverse
-from rest_framework.test import APIClient
-from django.contrib.auth.models import User, Group
-from blog.models import Site, Category, Author, Post
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 pytestmark = pytest.mark.django_db
 

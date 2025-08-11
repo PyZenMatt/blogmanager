@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import Site, Category, Author, Post, Comment, PostImage
+from .models import Author, Category, Comment, Post, PostImage, Site
 
 
 @admin.register(Site)

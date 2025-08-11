@@ -1,7 +1,8 @@
-import pytest
-from blog.models import Post
-from blog.exporter import render_markdown
 from datetime import datetime
+
+import pytest
+from blog.exporter import render_markdown
+from blog.models import Post
 
 
 class DummyTag:

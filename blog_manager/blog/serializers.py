@@ -1,6 +1,7 @@
-from rest_framework import serializers
-from .models import Site, Category, Author, Post, Comment, PostImage, Tag
 from django.contrib.auth import get_user_model
+from rest_framework import serializers
+
+from .models import Author, Category, Comment, Post, PostImage, Site, Tag
 
 
 class PostImageSerializer(serializers.ModelSerializer):

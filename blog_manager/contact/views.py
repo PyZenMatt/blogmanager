@@ -1,10 +1,12 @@
 import json
-import re
 import logging
-from django.core.mail import send_mail
 import os
+import re
+
+from django.core.mail import send_mail
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+
 from .models import ContactMessage
 
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

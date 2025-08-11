@@ -1,5 +1,7 @@
 import json
-from django.test import TestCase, Client
+
+from django.test import Client, TestCase
+
 from .models import ContactMessage
 
 

@@ -1,5 +1,5 @@
-import smtplib
 import os
+import smtplib
 from email.mime.text import MIMEText
 
 # Carica variabili d'ambiente dal file .env se necessario

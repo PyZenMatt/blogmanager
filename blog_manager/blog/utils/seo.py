@@ -1,5 +1,6 @@
-from django.utils.text import slugify
 import re
+
+from django.utils.text import slugify
 
 
 def slugify_title(s: str) -> str:

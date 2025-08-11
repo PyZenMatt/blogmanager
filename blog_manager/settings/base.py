@@ -1,7 +1,8 @@
-import environ
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
+
+import environ
 
 # Setup environ
 env = environ.Env(DEBUG=(bool, False))

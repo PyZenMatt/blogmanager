@@ -1,9 +1,10 @@
-from django.db import models
-from django.utils import timezone
 from cloudinary_storage.storage import MediaCloudinaryStorage
+from django.db import models
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
-from .utils.seo import slugify_title, extract_plain, meta_defaults
+from django.utils import timezone
+
+from .utils.seo import extract_plain, meta_defaults, slugify_title
 
 
 def upload_to_post_image(instance, filename):

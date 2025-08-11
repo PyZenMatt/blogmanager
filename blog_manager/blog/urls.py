@@ -1,8 +1,8 @@
 from django.urls import path
-from . import views
-
 from rest_framework.routers import DefaultRouter
-from .views import TagViewSet, PostViewSet, CategoryViewSet, AuthorViewSet
+
+from . import views
+from .views import AuthorViewSet, CategoryViewSet, PostViewSet, TagViewSet
 
 router = DefaultRouter()
 router.register(r"tags", TagViewSet, basename="tag")
