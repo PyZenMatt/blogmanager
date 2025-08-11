@@ -70,5 +70,14 @@ Thumbs.db
 uploads/
 
 
+# Ignore scripts output
+scripts/*.log
 
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.venv/
+venv/
+env/
 
