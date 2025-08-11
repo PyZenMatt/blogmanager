@@ -3,6 +3,7 @@ Exporter module for rendering Markdown with Jekyll-compatible front matter.
 """
 
 import yaml
+
 from blog.utils.seo import slugify_title
 
 

@@ -66,7 +66,8 @@ class Migration(migrations.Migration):
             model_name="postimage",
             name="image",
             field=models.ImageField(
-                storage=cloudinary_storage.storage.MediaCloudinaryStorage(), upload_to=blog.models.upload_to_post_image
+                storage=cloudinary_storage.storage.MediaCloudinaryStorage(),
+                upload_to=blog.models.upload_to_post_image,
             ),
         ),
     ]

@@ -91,7 +91,9 @@ class PostSerializer(serializers.ModelSerializer):
         ]
         validators = [
             serializers.UniqueTogetherValidator(
-                queryset=Post.objects.all(), fields=["site", "slug"], message="Slug must be unique per site."
+                queryset=Post.objects.all(),
+                fields=["site", "slug"],
+                message="Slug must be unique per site.",
             )
         ]
 

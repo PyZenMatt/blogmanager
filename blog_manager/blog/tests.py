@@ -1,10 +1,11 @@
 import pytest
-from blog.models import Author, Category, Post, Site
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
+
+from blog.models import Author, Category, Post, Site
 
 pytestmark = pytest.mark.django_db
 
@@ -70,7 +71,12 @@ def test_post_status_transitions():
     site = Site.objects.create(name="TestSite", domain="https://testsite.com")
     author = Author.objects.create(site=site, name="Author", bio="", slug="author")
     post = Post.objects.create(
-        site=site, title="Workflow", slug="workflow", author=author, content="Test", is_published=False
+        site=site,
+        title="Workflow",
+        slug="workflow",
+        author=author,
+        content="Test",
+        is_published=False,
     )
 
     # Draft to Review
@@ -97,7 +103,12 @@ def test_post_publish_requires_published_at():
     site = Site.objects.create(name="TestSite2", domain="https://testsite2.com")
     author = Author.objects.create(site=site, name="Author2", bio="", slug="author2")
     post = Post.objects.create(
-        site=site, title="NoPubDate", slug="nopubdate", author=author, content="Test", is_published=True
+        site=site,
+        title="NoPubDate",
+        slug="nopubdate",
+        author=author,
+        content="Test",
+        is_published=True,
     )
     post.status = "published"
     post.published_at = None
@@ -109,7 +120,12 @@ def test_post_review_requires_reviewer():
     site = Site.objects.create(name="TestSite3", domain="https://testsite3.com")
     author = Author.objects.create(site=site, name="Author3", bio="", slug="author3")
     post = Post.objects.create(
-        site=site, title="NoReviewer", slug="noreviewer", author=author, content="Test", is_published=False
+        site=site,
+        title="NoReviewer",
+        slug="noreviewer",
+        author=author,
+        content="Test",
+        is_published=False,
     )
     post.status = "review"
     post.reviewed_by = None

@@ -14,7 +14,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="Author",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 ("name", models.CharField(max_length=100)),
                 ("bio", models.TextField(blank=True)),
                 ("slug", models.SlugField(unique=True)),
@@ -23,7 +31,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="Category",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 ("name", models.CharField(max_length=100)),
                 ("slug", models.SlugField(unique=True)),
             ],
@@ -31,7 +47,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="Site",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 ("name", models.CharField(max_length=100)),
                 ("domain", models.URLField(unique=True)),
             ],
@@ -39,7 +63,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="Post",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 ("title", models.CharField(max_length=200)),
                 ("slug", models.SlugField(unique=True)),
                 ("content", models.TextField()),
@@ -48,13 +80,22 @@ class Migration(migrations.Migration):
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 (
                     "author",
-                    models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, to="blog.author"),
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        to="blog.author",
+                    ),
                 ),
-                ("categories", models.ManyToManyField(related_name="posts", to="blog.category")),
+                (
+                    "categories",
+                    models.ManyToManyField(related_name="posts", to="blog.category"),
+                ),
                 (
                     "site",
                     models.ForeignKey(
-                        on_delete=django.db.models.deletion.CASCADE, related_name="posts", to="blog.site"
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="posts",
+                        to="blog.site",
                     ),
                 ),
             ],
@@ -62,7 +103,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="Comment",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 ("author_name", models.CharField(max_length=100)),
                 ("author_email", models.EmailField(max_length=254)),
                 ("text", models.TextField()),
@@ -70,7 +119,9 @@ class Migration(migrations.Migration):
                 (
                     "post",
                     models.ForeignKey(
-                        on_delete=django.db.models.deletion.CASCADE, related_name="comments", to="blog.post"
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="comments",
+                        to="blog.post",
                     ),
                 ),
             ],
@@ -79,14 +130,18 @@ class Migration(migrations.Migration):
             model_name="category",
             name="site",
             field=models.ForeignKey(
-                on_delete=django.db.models.deletion.CASCADE, related_name="categories", to="blog.site"
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="categories",
+                to="blog.site",
             ),
         ),
         migrations.AddField(
             model_name="author",
             name="site",
             field=models.ForeignKey(
-                on_delete=django.db.models.deletion.CASCADE, related_name="authors", to="blog.site"
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="authors",
+                to="blog.site",
             ),
         ),
         migrations.AddIndex(

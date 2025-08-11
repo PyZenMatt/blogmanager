@@ -1,6 +1,7 @@
 from django.core.cache import cache
 from django.http import HttpResponse
 from django.test import RequestFactory, TestCase
+
 from writer.middleware import LoginRateLimitMiddleware
 
 

@@ -102,7 +102,13 @@ DEBUG = True
 
 
 # Imposta i domini reali in produzione
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "messymind.it", "matteoricci.net", "pyzenmatt.pythonanywhere.com"]
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "messymind.it",
+    "matteoricci.net",
+    "pyzenmatt.pythonanywhere.com",
+]
 
 
 # Application definition

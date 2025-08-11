@@ -66,7 +66,11 @@ class AuthorListView(generics.ListAPIView):
 # POSTS
 class PostListView(generics.ListAPIView):
     serializer_class = PostSerializer
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
     filterset_fields = ["site", "is_published", "categories__slug"]
     search_fields = ["title", "slug", "content"]
     ordering_fields = ["published_at", "updated_at"]
@@ -173,7 +177,11 @@ class PostViewSet(ModelViewSet):
     queryset = Post.objects.all()
     serializer_class = PostSerializer
     permission_classes = [IsPublisherForWriteOrReadOnly]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
     filterset_fields = ["site", "status"]
     search_fields = ["title", "slug", "content"]
     ordering_fields = ["published_at", "updated_at"]

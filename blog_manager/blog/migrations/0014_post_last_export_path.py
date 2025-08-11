@@ -6,7 +6,10 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("blog", "0013_rename_blog_category_site_slug_idx_blog_catego_site_id_69b4ec_idx_and_more"),
+        (
+            "blog",
+            "0013_rename_blog_category_site_slug_idx_blog_catego_site_id_69b4ec_idx_and_more",
+        ),
     ]
 
     operations = [
@@ -14,7 +17,10 @@ class Migration(migrations.Migration):
             model_name="post",
             name="last_export_path",
             field=models.CharField(
-                blank=True, help_text="Percorso ultimo file esportato su Jekyll", max_length=255, null=True
+                blank=True,
+                help_text="Percorso ultimo file esportato su Jekyll",
+                max_length=255,
+                null=True,
             ),
         ),
     ]

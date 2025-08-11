@@ -22,7 +22,12 @@ class LoginRateLimitMiddleware:
             key = f"login:{ip}:{user}"
             data = cache.get(key, {"n": 0, "ts": time()})
             if data["n"] >= MAX_ATTEMPTS:
-                return render(request, "writer/login.html", {"form": None, "rate_limited": True}, status=429)
+                return render(
+                    request,
+                    "writer/login.html",
+                    {"form": None, "rate_limited": True},
+                    status=429,
+                )
             resp = self.get_response(request)
             if resp.status_code == 200:
                 # view non ha redirect → probabile fallimento

@@ -32,7 +32,12 @@ class ContactSubmitAPITest(TestCase):
         self.assertFalse(response.json()["success"])
 
     def test_honeypot(self):
-        data = {"name": "Mario", "email": "mario@example.com", "message": "Ciao!", "honeypot": "spam"}
+        data = {
+            "name": "Mario",
+            "email": "mario@example.com",
+            "message": "Ciao!",
+            "honeypot": "spam",
+        }
         response = self.client.post(self.url, data=json.dumps(data), content_type="application/json")
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.json()["success"])

@@ -1,8 +1,9 @@
 import pytest
-from blog.models import Author, Post, Site
 from django.contrib.auth.models import Group, User
 from django.urls import reverse
 from rest_framework.test import APIClient
+
+from blog.models import Author, Post, Site
 
 pytestmark = pytest.mark.django_db
 
@@ -62,7 +63,13 @@ def test_publisher_can_publish(api_client):
     from django.utils import timezone
 
     resp = api_client.patch(
-        url, {"is_published": True, "published_at": timezone.now().isoformat(), "status": "published"}, format="json"
+        url,
+        {
+            "is_published": True,
+            "published_at": timezone.now().isoformat(),
+            "status": "published",
+        },
+        format="json",
     )
     print("PATCH response status:", resp.status_code)
     print("PATCH response data:", resp.data)

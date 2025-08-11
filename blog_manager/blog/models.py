@@ -35,7 +35,10 @@ class Site(models.Model):
     media_dir = models.CharField(max_length=100, default="assets/img", help_text="Directory for media")
     base_url = models.URLField(blank=True, help_text="Base URL for published site")
 
-    MEDIA_STRATEGY_CHOICES = [("external", "External URLs (Cloudinary/S3)"), ("commit", "Commit assets in repo")]
+    MEDIA_STRATEGY_CHOICES = [
+        ("external", "External URLs (Cloudinary/S3)"),
+        ("commit", "Commit assets in repo"),
+    ]
     media_strategy = models.CharField(
         max_length=20,
         choices=MEDIA_STRATEGY_CHOICES,
@@ -106,7 +109,12 @@ class Post(models.Model):
         ("it", "Italiano"),
         ("en", "English"),
     ]
-    language = models.CharField(max_length=2, choices=LANGUAGE_CHOICES, default="it", help_text="Lingua dell'articolo")
+    language = models.CharField(
+        max_length=2,
+        choices=LANGUAGE_CHOICES,
+        default="it",
+        help_text="Lingua dell'articolo",
+    )
 
     # Editorial workflow fields
     STATUS_CHOICES = [

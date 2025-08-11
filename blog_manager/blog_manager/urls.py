@@ -15,11 +15,12 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
-from blog.views import PostViewSet, SiteViewSet
 from django.contrib import admin
 from django.shortcuts import redirect
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
+
+from blog.views import PostViewSet, SiteViewSet
 
 
 def root_redirect(request):

@@ -56,7 +56,10 @@ def contact_submit(request):
             recipient_list=[recipient] if recipient else [],
             fail_silently=True,
         )
-        logger.info("Notifica email inviata", extra={"user_email": email, "recipient": recipient})
+        logger.info(
+            "Notifica email inviata",
+            extra={"user_email": email, "recipient": recipient},
+        )
     except Exception as e:
         logger.error("Errore invio email", extra={"error": str(e)})
 

@@ -1,8 +1,9 @@
 import os
 
-from blog.models import PostImage
 from django.core.files import File
 from django.core.management.base import BaseCommand
+
+from blog.models import PostImage
 
 
 class Command(BaseCommand):

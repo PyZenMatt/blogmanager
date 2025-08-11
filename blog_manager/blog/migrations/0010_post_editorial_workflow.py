@@ -14,7 +14,11 @@ class Migration(migrations.Migration):
             name="status",
             field=models.CharField(
                 max_length=10,
-                choices=[("draft", "Draft"), ("review", "Review"), ("published", "Published")],
+                choices=[
+                    ("draft", "Draft"),
+                    ("review", "Review"),
+                    ("published", "Published"),
+                ],
                 default="draft",
             ),
         ),

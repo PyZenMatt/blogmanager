@@ -19,7 +19,11 @@ class Migration(migrations.Migration):
             model_name="post",
             name="export_status",
             field=models.CharField(
-                choices=[("success", "Success"), ("failed", "Failed"), ("pending", "Pending")],
+                choices=[
+                    ("success", "Success"),
+                    ("failed", "Failed"),
+                    ("pending", "Pending"),
+                ],
                 default="pending",
                 help_text="Stato export/build",
                 max_length=16,
@@ -29,14 +33,20 @@ class Migration(migrations.Migration):
             model_name="post",
             name="last_pages_build_url",
             field=models.URLField(
-                blank=True, help_text="URL build/errore ultima pubblicazione", max_length=255, null=True
+                blank=True,
+                help_text="URL build/errore ultima pubblicazione",
+                max_length=255,
+                null=True,
             ),
         ),
         migrations.AddField(
             model_name="site",
             name="media_strategy",
             field=models.CharField(
-                choices=[("external", "External URLs (Cloudinary/S3)"), ("commit", "Commit assets in repo")],
+                choices=[
+                    ("external", "External URLs (Cloudinary/S3)"),
+                    ("commit", "Commit assets in repo"),
+                ],
                 default="external",
                 help_text="How to handle post images: external URLs or commit assets in repo.",
                 max_length=20,
