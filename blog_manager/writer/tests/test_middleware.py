@@ -1,3 +1,4 @@
+
 from django.test import TestCase, RequestFactory
 from django.core.cache import cache
 from django.http import HttpResponse
@@ -21,7 +22,10 @@ class LoginRateLimitMiddlewareTest(TestCase):
             self.assertEqual(response.status_code, 200)
 
         # 6th attempt should be blocked
-        request = self.factory.post("/writer/login/", {"username": "testuser"})
+        request = self.factory.post(
+            "/writer/login/",
+            {"username": "testuser"},
+        )
         response = self.middleware(request)
         self.assertEqual(response.status_code, 429)
         self.assertIn(
