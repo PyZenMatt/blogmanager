@@ -1,5 +1,4 @@
 import pytest
-from rest_framework.permissions import AllowAny, BasePermission, SAFE_METHODS
 
 
 def _ensure_permission_classes(monkeypatch, cls, perm):

@@ -14,7 +14,7 @@ from .serializers import (
     PostSerializer,
     SiteSerializer,
     TagSerializer,
-))
+)
 
 
 # ENDPOINT API PER UPLOAD IMMAGINI (PostImage)
