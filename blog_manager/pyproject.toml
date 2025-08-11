@@ -1,0 +1,5 @@
+blogmanager/
+  pyproject.toml   ← qui
+  manage.py
+  blog_manager/
+  .github/workflows/...

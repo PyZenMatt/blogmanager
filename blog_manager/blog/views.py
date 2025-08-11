@@ -4,15 +4,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.viewsets import ModelViewSet
 
-from .models import (
-    Author,
-    Category,
-    Comment,
-    Post,
-    PostImage,
-    Site,
-    Tag,
-)
+from .models import Author, Category, Comment, Post, PostImage, Site, Tag
 from .permissions import IsPublisherForWriteOrReadOnly
 from .serializers import (
     AuthorSerializer,
@@ -22,7 +14,7 @@ from .serializers import (
     PostSerializer,
     SiteSerializer,
     TagSerializer,
-)
+))
 
 
 # ENDPOINT API PER UPLOAD IMMAGINI (PostImage)
