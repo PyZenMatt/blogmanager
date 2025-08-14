@@ -24,9 +24,9 @@ DATABASES = {
         "HOST": env("MYSQL_HOST"),
         "PORT": env("MYSQL_PORT"),
         "OPTIONS": {
+            # MySQL 5.7+/8: garantisce supporto emoji/Unicode 4‑byte
             "charset": "utf8mb4",
-            "use_unicode": True,
-            "init_command": "SET sql_mode='STRICT_ALL_TABLES', time_zone='+00:00'",
+            "init_command": "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
         },
         "CONN_MAX_AGE": 60,  # keep-alive pooling
     }
