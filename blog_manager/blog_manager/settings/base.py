@@ -27,10 +27,29 @@ DATABASES = {
     "default": (
         env.db("DATABASE_URL")
         if "DATABASE_URL" in os.environ
-        else {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
+        else (
+            {
+                "ENGINE": env("DB_ENGINE", default="django.db.backends.sqlite3"),
+                "NAME": env("DB_NAME", default=BASE_DIR / "db.sqlite3"),
+                "USER": env("DB_USER", default=""),
+                "PASSWORD": env("DB_PASSWORD", default=""),
+                "HOST": env("DB_HOST", default=""),
+                "PORT": env("DB_PORT", default=""),
+            }
+            if env("DB_ENGINE", default="django.db.backends.sqlite3") != "django.db.backends.mysql"
+            else {
+                "ENGINE": env("DB_ENGINE", default="django.db.backends.mysql"),
+                "NAME": env("DB_NAME", default="blogmanager"),
+                "USER": env("DB_USER", default="bm_user"),
+                "PASSWORD": env("DB_PASSWORD", default="password"),
+                "HOST": env("DB_HOST", default="127.0.0.1"),
+                "PORT": env("DB_PORT", default="3306"),
+                "OPTIONS": {
+                    "charset": "utf8mb4",
+                    "init_command": "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
+                },
+            }
+        )
     )
 }
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=None) or []

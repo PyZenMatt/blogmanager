@@ -30,6 +30,7 @@ blog_manager/
 ```
 
 ## Onboarding rapido
+
 1. **Clona il repository:**
    ```bash
    git clone <repo-url>
@@ -47,7 +48,35 @@ blog_manager/
 4. **Configura le variabili ambiente:**
     - Copia `.env.example` in `.env` e personalizza i valori.
 
-5. **Imposta il modulo settings desiderato:**
+5. **Setup MySQL locale (opzionale, per test charset/collation):**
+   - Installa MySQL 8.x:
+     ```bash
+     sudo apt update && sudo apt install mysql-server
+     sudo systemctl enable mysql
+     sudo mysql_secure_installation
+     ```
+   - Crea database e utente:
+     ```sql
+     CREATE DATABASE blogmanager CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+     CREATE USER 'bm_user'@'localhost' IDENTIFIED BY 'password';
+     GRANT ALL PRIVILEGES ON blogmanager.* TO 'bm_user'@'localhost';
+     FLUSH PRIVILEGES;
+     ```
+   - Aggiorna `.env` locale:
+     ```
+     DB_ENGINE=django.db.backends.mysql
+     DB_NAME=blogmanager
+     DB_USER=bm_user
+     DB_PASSWORD=password
+     DB_HOST=127.0.0.1
+     DB_PORT=3306
+     ```
+   - Esegui le migrazioni:
+     ```bash
+     python manage.py migrate
+     ```
+
+6. **Imposta il modulo settings desiderato:**
     - Sviluppo:
        ```bash
        export DJANGO_SETTINGS_MODULE=blog_manager.settings.dev
@@ -62,7 +91,7 @@ blog_manager/
        ```
     - Puoi anche impostare la variabile DJANGO_SETTINGS_MODULE direttamente nella configurazione del servizio (es. PythonAnywhere Web → Environment).
 
-6. **Installa e attiva pre-commit:**
+7. **Installa e attiva pre-commit:**
    ```bash
    pip install pre-commit
    pre-commit install

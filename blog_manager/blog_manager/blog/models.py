@@ -1,8 +1,12 @@
+
+import re
+import unicodedata
 from cloudinary_storage.storage import MediaCloudinaryStorage
 from django.db import models
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
 from django.utils import timezone
+from django.utils.text import slugify as dj_slugify
 
 from .utils.seo import extract_plain, meta_defaults, slugify_title
 
@@ -107,7 +111,7 @@ class Post(models.Model):
 
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="posts")
     title = models.CharField(max_length=200)
-    slug = models.SlugField(unique=True)
+    slug = models.SlugField()
     author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True)
     categories = models.ManyToManyField(Category, related_name="posts")
     content = models.TextField()  # Markdown o HTML
@@ -216,12 +220,49 @@ class Post(models.Model):
         if self.status == "review" and not self.reviewed_by:
             raise ValidationError("reviewed_by is required when status is review.")
 
+    # imports now at top-level
+
+    @staticmethod
+    def _normalize(s: str) -> str:
+        if not s:
+            return s
+        s = re.sub(r"[\x00\uD800-\uDFFF]", "", s)  # null bytes + surrogati
+        try:
+            s = unicodedata.normalize("NFKD", s)
+        except Exception:
+            pass
+        return s
+
+    @classmethod
+    def safe_slugify(cls, site_id: int, title: str, base_slug: str = None, max_len: int = 200) -> str:
+        base = base_slug or dj_slugify(cls._normalize(title)) or "post"
+        base = base[:max_len].strip("-")
+        candidate = base
+        i = 2
+        while cls.objects.filter(site_id=site_id, slug=candidate).exists():
+            suffix = f"-{i}"
+            cut = max_len - len(suffix)
+            candidate = f"{base[:cut].rstrip('-')}{suffix}"
+            i += 1
+        return candidate
+
     def save(self, *args, **kwargs):
+        # Autogenerazione slug se mancante o vuoto
+        site_id = self.site.pk
+        if not self.slug:
+            self.slug = self.safe_slugify(site_id=site_id, title=self.title)
+        else:
+            self.slug = self._normalize(self.slug)
+            self.slug = dj_slugify(self.slug)[:200].strip("-") or "post"
         self.full_clean()
-        super().save(*args, **kwargs)
+        from django.db import transaction
+        with transaction.atomic():
+            super().save(*args, **kwargs)
 
     class Meta:
-        unique_together = (("site", "slug"),)
+        constraints = [
+            models.UniqueConstraint(fields=["site", "slug"], name="uniq_site_slug"),
+        ]
         indexes = [
             models.Index(fields=["site", "slug"]),
         ]

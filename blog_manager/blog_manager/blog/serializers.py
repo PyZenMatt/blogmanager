@@ -100,22 +100,37 @@ class PostSerializer(serializers.ModelSerializer):
         ]
 
     def validate_slug(self, value):
+        import re
+        import unicodedata
+        from django.utils.text import slugify as dj_slugify
+        v = value
+        v = re.sub(r"[\x00\uD800-\uDFFF]", "", v or "")
+        try:
+            v = unicodedata.normalize("NFKD", v)
+        except Exception:
+            pass
+        v = dj_slugify(v)[:200].strip("-") or "post"
         site = None
-        # Try to get site from initial_data (creation) or from instance (update)
         if hasattr(self, "initial_data") and isinstance(self.initial_data, dict):
             site = self.initial_data.get("site")
         if not site and self.instance:
             site = getattr(self.instance, "site", None)
         if not site:
-            raise serializers.ValidationError(
-                "Site is required for slug uniqueness check."
-            )
-        qs = Post.objects.filter(site=site, slug=value)
+            raise serializers.ValidationError("Site is required for slug uniqueness check.")
+        qs = Post.objects.filter(site=site, slug=v)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
             raise serializers.ValidationError("Slug must be unique per site.")
-        return value
+        return v
+    def create(self, validated_data):
+        # Autogenerazione server-side se slug mancante
+        if not validated_data.get("slug"):
+            post = Post(**validated_data)
+            post.slug = Post.safe_slugify(site_id=post.site.id if hasattr(post.site, 'id') else post.site, title=post.title)
+            post.save()
+            return post
+        return super().create(validated_data)
 
     site = serializers.PrimaryKeyRelatedField(queryset=Site.objects.all())
     author = serializers.PrimaryKeyRelatedField(queryset=Author.objects.all())
