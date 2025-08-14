@@ -5,9 +5,9 @@ from typing import Optional
 
 from django.utils import timezone
 
-from blog.exporter import build_post_relpath, compute_canonical_url, render_markdown
-from blog.github_client import GitHubClient
-from blog.models import ExportJob, Post
+from blog_manager.blog.exporter import build_post_relpath, compute_canonical_url, render_markdown
+from blog_manager.blog.github_client import GitHubClient
+from blog_manager.blog.models import ExportJob, Post
 
 
 @dataclass

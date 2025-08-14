@@ -1,8 +1,8 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from blog.models import Post
-from blog.services.publish import publish_post
+from blog_manager.blog.models import Post
+from blog_manager.blog.services.publish import publish_post
 
 
 @receiver(post_save, sender=Post)

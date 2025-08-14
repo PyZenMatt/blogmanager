@@ -8,7 +8,7 @@ from typing import Optional, Tuple
 
 import yaml
 
-from blog.utils.seo import slugify_title
+from blog_manager.blog.utils.seo import slugify_title
 
 
 def _date_parts(

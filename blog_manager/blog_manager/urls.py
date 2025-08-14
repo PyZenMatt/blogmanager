@@ -20,7 +20,7 @@ from django.shortcuts import redirect
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from blog.views import PostViewSet, SiteViewSet
+from blog_manager.blog.views import PostViewSet, SiteViewSet
 
 
 def root_redirect(request):
@@ -36,9 +36,9 @@ router.register(r"posts", PostViewSet, basename="post")
 urlpatterns = [
     path("", root_redirect),
     path("admin/", admin.site.urls),
-    path("api/contact/", include("contact.urls")),
-    path("api/blog/", include("blog.urls")),
+    path("api/contact/", include("blog_manager.contact.urls")),
+    path("api/blog/", include("blog_manager.blog.urls")),
     # Expose /api/sites/ (list/create) and /api/sites/<id>/ via DRF router
     path("api/", include(router.urls)),
-    path("writer/", include("writer.urls", namespace="writer")),
+    path("writer/", include("blog_manager.writer.urls", namespace="writer")),
 ]

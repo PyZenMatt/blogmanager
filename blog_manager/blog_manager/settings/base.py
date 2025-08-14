@@ -1,7 +1,6 @@
 import os
 import sys
 from pathlib import Path
-
 import environ
 
 # Setup environ
@@ -52,16 +51,16 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "contact",
+    "blog_manager.contact",
     "corsheaders",
-    "blog",
+    "blog_manager.blog",
     "anymail",
     "rest_framework",
     "django_filters",
     "cloudinary",
     "cloudinary_storage",
     "rest_framework.authtoken",
-    "writer",
+    "blog_manager.writer",
 ]
 
 MIDDLEWARE = [
@@ -74,7 +73,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
-MIDDLEWARE.insert(0, "writer.middleware.LoginRateLimitMiddleware")
+MIDDLEWARE.insert(0, "blog_manager.writer.middleware.LoginRateLimitMiddleware")
 
 ROOT_URLCONF = "blog_manager.urls"
 
