@@ -124,9 +124,11 @@ class PostSerializer(serializers.ModelSerializer):
             if key in attrs and isinstance(attrs[key], str):
                 attrs[key] = _clean_text(attrs[key]).strip()
         
-        # Special handling for content (mapped from body)
+        # Special handling for content (mapped from body) and body field
         if "content" in attrs and isinstance(attrs["content"], str):
             attrs["content"] = _clean_text(attrs["content"]).strip()
+        if "body" in attrs and isinstance(attrs["body"], str):
+            attrs["body"] = _clean_text(attrs["body"]).strip()
 
         # Bound esplicito per CharField (evita 500 su overflow)
         title = attrs.get("title") or getattr(self.instance, "title", "") if self.instance else ""
