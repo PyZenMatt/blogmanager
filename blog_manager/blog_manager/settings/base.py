@@ -25,14 +25,18 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default=None)
 DEBUG = env.bool("DEBUG") if "DEBUG" in os.environ else False
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS") if "ALLOWED_HOSTS" in os.environ else []
 DATABASES = {
-    "default": (
-        env.db("DATABASE_URL")
-        if "DATABASE_URL" in os.environ
-        else {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
-    )
+    "default": {
+        "ENGINE": "django.db.backends.mysql",
+        "NAME": "blogmanager_db",
+        "USER": "bloguser",
+        "PASSWORD": "blogpass",
+        "HOST": "127.0.0.1",
+        "PORT": "3306",
+        "OPTIONS": {
+            "charset": "utf8mb4",
+            "init_command": "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
+        },
+    }
 }
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=None) or []
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=None) or []
@@ -169,5 +173,7 @@ LOGGING = {
             "level": "DEBUG",
             "propagate": True,
         },
+        "django.db.backends": {"level": "WARNING"},
+        "core.rest.exceptions": {"level": "INFO"},
     },
 }
