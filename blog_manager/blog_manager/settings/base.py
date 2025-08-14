@@ -34,6 +34,14 @@ DATABASES = {
         }
     )
 }
+
+# MySQL utf8mb4 support for emoji and 4-byte Unicode characters
+if DATABASES["default"]["ENGINE"] == "django.db.backends.mysql":
+    DATABASES["default"]["OPTIONS"] = {
+        # MySQL 5.7+/8: garantisce supporto emoji/Unicode 4-byte
+        "charset": "utf8mb4",
+        "init_command": "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
+    }
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=None) or []
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=None) or []
 CLOUDINARY_URL = env("CLOUDINARY_URL", default=None)
@@ -138,6 +146,7 @@ REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 10,
+    "EXCEPTION_HANDLER": "blog_manager.rest.exceptions.custom_exception_handler",
 }
 
 # Logging
