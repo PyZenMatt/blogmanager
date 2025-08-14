@@ -27,7 +27,7 @@ def main() -> None:
 
     try:
         from django.core.management import execute_from_command_line
-    except Exception as exc:  # messaggio di aiuto se il package non si trova
+    except Exception:  # messaggio di aiuto se il package non si trova
         hint = (
             "\n[Hint] Verifica che esista la cartella 'blog_manager' (package) "
             "accanto a questo manage.py, con __init__.py e la directory 'settings/'.\n"

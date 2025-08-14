@@ -1,5 +1,4 @@
-from django.db import migrations, models, transaction
-from django.db.models import F
+from django.db import migrations, models
 
 def dedupe_slugs(apps, schema_editor):
     Post = apps.get_model("blog", "Post")
@@ -15,7 +14,8 @@ def dedupe_slugs(apps, schema_editor):
         base = p.slug or ""
         title = p.title or ""
         slug_base = base if base else None
-        import re, unicodedata
+        import re
+        import unicodedata
         from django.utils.text import slugify as dj_slugify
         def _norm(s):
             s = re.sub(r"[\x00\uD800-\uDFFF]", "", s or "")

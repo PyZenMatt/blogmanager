@@ -1,7 +1,22 @@
 # Changelog
 
-## [Unreleased]
-### Fixed
-- Harden bootstrap: `manage.py` ora forza l'inclusione della project root in `sys.path`
-  e imposta un default sicuro `DJANGO_SETTINGS_MODULE=blog_manager.settings.dev`.
-- Documentato ONBOARDING su comandi e variabili d'ambiente.
+
+
+## [0.x.x] - 2025-08-14
+
+### Fix
+
+- Emoji/Unicode 4-byte su MySQL (utf8mb4)
+- Doppio submit nel writer eliminato (nessun falso 400)
+
+### Hardening
+
+- Unicità slug per sito + 409 su duplicati
+
+### DX
+
+- Creazione post atomica (M2M post-save in transazione)
+
+### Safe-deploy
+
+- Migrazioni additive; nessuna cancellazione DB
