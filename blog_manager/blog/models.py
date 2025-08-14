@@ -3,8 +3,26 @@ from django.db import models
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
 from django.utils import timezone
+from django.conf import settings
 
 from .utils.seo import extract_plain, meta_defaults, slugify_title
+
+
+# Determine if we should use utf8mb4 collation (only for MySQL)
+def get_mysql_collation():
+    """Return utf8mb4_unicode_ci for MySQL, None for other databases"""
+    try:
+        from django.conf import settings
+        if hasattr(settings, 'DATABASES') and 'default' in settings.DATABASES:
+            db_engine = settings.DATABASES["default"]["ENGINE"]
+            if "mysql" in db_engine:
+                return "utf8mb4_unicode_ci"
+    except (AttributeError, KeyError, ImportError):
+        pass
+    return None
+
+
+MYSQL_COLLATION = get_mysql_collation()
 
 
 def upload_to_post_image(instance, filename):
@@ -101,16 +119,16 @@ class Author(models.Model):
 
 
 class Post(models.Model):
-    meta_title = models.CharField(max_length=70, blank=True)
-    meta_description = models.CharField(max_length=180, blank=True)
-    meta_keywords = models.CharField(max_length=255, blank=True)
+    meta_title = models.CharField(max_length=70, blank=True, db_collation=MYSQL_COLLATION)
+    meta_description = models.CharField(max_length=180, blank=True, db_collation=MYSQL_COLLATION)
+    meta_keywords = models.CharField(max_length=255, blank=True, db_collation=MYSQL_COLLATION)
 
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="posts")
-    title = models.CharField(max_length=200)
-    slug = models.SlugField(unique=True)
+    title = models.CharField(max_length=200, db_collation=MYSQL_COLLATION)
+    slug = models.SlugField(unique=True, db_collation=MYSQL_COLLATION)
     author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True)
     categories = models.ManyToManyField(Category, related_name="posts")
-    content = models.TextField()  # Markdown o HTML
+    content = models.TextField(db_collation=MYSQL_COLLATION)  # Markdown o HTML
     published_at = models.DateTimeField(null=True, blank=True)
     is_published = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
@@ -141,10 +159,10 @@ class Post(models.Model):
         related_name="reviewed_posts",
     )
     reviewed_at = models.DateTimeField(null=True, blank=True)
-    review_notes = models.TextField(blank=True)
+    review_notes = models.TextField(blank=True, db_collation=MYSQL_COLLATION)
 
     # Campi aggiuntivi per front matter ricco
-    seo_title = models.CharField(max_length=200, blank=True)
+    seo_title = models.CharField(max_length=200, blank=True, db_collation=MYSQL_COLLATION)
     background = models.CharField(
         max_length=200,
         blank=True,
@@ -155,15 +173,15 @@ class Post(models.Model):
         default="https://res.cloudinary.com/dkoc4knvv/image/upload/v1/",
     )
     tags = models.TextField(
-        blank=True, help_text="Separare i tag con virgola o newline"
+        blank=True, help_text="Separare i tag con virgola o newline", db_collation=MYSQL_COLLATION
     )
-    description = models.TextField(blank=True)
+    description = models.TextField(blank=True, db_collation=MYSQL_COLLATION)
     keywords = models.TextField(
-        blank=True, help_text="Separare le keyword con virgola o newline"
+        blank=True, help_text="Separare le keyword con virgola o newline", db_collation=MYSQL_COLLATION
     )
     canonical_url = models.URLField(blank=True)
-    og_title = models.CharField(max_length=100, blank=True)
-    og_description = models.CharField(max_length=200, blank=True)
+    og_title = models.CharField(max_length=100, blank=True, db_collation=MYSQL_COLLATION)
+    og_description = models.CharField(max_length=200, blank=True, db_collation=MYSQL_COLLATION)
     og_image_url = models.URLField(blank=True)
     noindex = models.BooleanField(default=False)
     # Osservabilità export/build
