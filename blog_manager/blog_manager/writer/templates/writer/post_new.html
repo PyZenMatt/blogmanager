@@ -238,6 +238,8 @@
 			status: fd.get('status') || 'draft',
 			published_at: fd.get('published_at') ? new Date(fd.get('published_at')).toISOString() : null,
 			body: easyMDE.value(), // Markdown dal WYSIWYG
+			content: easyMDE.value(), // Per compatibilità serializer
+			is_published: (fd.get('status') === 'published'),
 			cover_image_url: fd.get('cover_image_url') || null,
 		};
 
