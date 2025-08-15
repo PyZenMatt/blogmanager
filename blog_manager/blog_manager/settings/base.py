@@ -62,9 +62,9 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # App di progetto (usare il path all'AppConfig per garantire ready() e label corretti)
-    "blog",
-    "contact.apps.ContactConfig",
-    "writer.apps.WriterConfig",
+    "blog.apps.BlogConfig",
+    "contact",
+    "writer",
     # Terze parti
     "corsheaders",
     "anymail",
@@ -85,9 +85,16 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
-MIDDLEWARE.insert(0, "writer.middleware.LoginRateLimitMiddleware")
-
-
+MIDDLEWARE.insert(0, "blog_manager.writer.middleware.LoginRateLimitMiddleware")
+# Insert verbose exception logging middleware (activated via env ENABLE_VERBOSE_ERRORS)
+# NOTE:
+# The 'core' package lives as a sibling of the inner 'blog_manager' package
+# (project layout: outer_dir/blog_manager/{core, blog_manager, ...}).
+# Because the outer 'blog_manager' directory is added to PYTHONPATH and only
+# the *inner* 'blog_manager' directory is a package (it has __init__.py),
+# importing 'blog_manager.core....' fails in production since 'core' is not
+# inside the inner package. Refer to it as a top-level package instead.
+# This prevents: ModuleNotFoundError: No module named 'blog_manager.core'
 MIDDLEWARE.append("core.middleware.exception_logging.VerboseExceptionLoggingMiddleware")
 
 ROOT_URLCONF = "urls"

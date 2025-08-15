@@ -22,14 +22,7 @@ from rest_framework.routers import DefaultRouter
 
 from django.http import JsonResponse
 
-"""Root URLconf.
-
-Nota: l'import precedente usava 'blog_manager.blog_manager.blog.views' causando path
-ridondante e potenziali problemi di import in alcuni ambienti. Corretto a
-'blog_manager.blog.views'.
-"""
-
-from blog_manager.blog.views import PostViewSet, SiteViewSet
+from blog.views import PostViewSet, SiteViewSet
 
 
 def root_redirect(request):
@@ -45,10 +38,10 @@ router.register(r"posts", PostViewSet, basename="post")
 urlpatterns = [
     path("", root_redirect),
     path("admin/", admin.site.urls),
-    path("api/contact/", include("blog_manager.contact.urls")),
+    path("api/contact/", include("contact.urls")),
     path("api/blog/", include("blog.urls")),
     # Expose /api/sites/ (list/create) and /api/sites/<id>/ via DRF router
     path("api/", include((router.urls, "api"), namespace="api")),
     path("api/health/", lambda r: JsonResponse({"ok": True}, status=200)),
-    path("writer/", include("blog_manager.writer.urls", namespace="writer")),
+    path("writer/", include("writer.urls", namespace="writer")),
 ]

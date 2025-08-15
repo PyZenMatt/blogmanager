@@ -37,5 +37,5 @@ def content_hash(post) -> str:
     return hashlib.sha256(data).hexdigest()
     """
     Le funzioni content_hash, render_markdown_for_export e build_jekyll_front_matter sono ora in __init__.py
-    Importale da blog_manager.blog.utils
+    Importale da blog.utils
     """
