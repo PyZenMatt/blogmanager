@@ -5,7 +5,7 @@ from typing import Optional
 
 from django.core.management.base import BaseCommand, CommandError
 
-from blog.exporter import render_markdown
+from blog.utils import render_markdown_for_export
 from blog.models import Site
 from blog.services.github_checks import (
     check_branch,
@@ -92,7 +92,7 @@ class Command(BaseCommand):
                     tags = []
                     categories = []
 
-                _ = render_markdown(Dummy(), site)
+                _ = render_markdown_for_export(Dummy())
                 self.stdout.write("✅ exporter: ok")
             except Exception as e:
                 ok = False
