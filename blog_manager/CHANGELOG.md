@@ -20,3 +20,6 @@
 ### Safe-deploy
 
 - Migrazioni additive; nessuna cancellazione DB
+
+### Fixed
+- Export su GitHub resilient: scrittura se file mancante/non tracciato, push anche in assenza di modifiche se `HEAD` è ahead di `origin`. Aggiornamento `export_hash` solo dopo push OK. Nuovo comando `export_pending_posts`.
