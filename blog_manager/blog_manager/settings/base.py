@@ -82,6 +82,8 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 MIDDLEWARE.insert(0, "blog_manager.writer.middleware.LoginRateLimitMiddleware")
+# Insert verbose exception logging middleware (activated via env ENABLE_VERBOSE_ERRORS)
+MIDDLEWARE.append("blog_manager.core.middleware.exception_logging.VerboseExceptionLoggingMiddleware")
 
 ROOT_URLCONF = "blog_manager.urls"
 
@@ -158,12 +160,16 @@ LOGGING = {
                 '"message": %(message)s}'
             ),
         },
+        "simple": {"format": "%(levelname)s %(name)s %(message)s"},
+        "verbose": {
+            "format": "%(asctime)s %(levelname)s [%(name)s] %(module)s:%(lineno)d %(message)s"
+        },
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
             "stream": sys.stdout,
-            "formatter": "json",
+            "formatter": "verbose",
         },
     },
     "root": {
@@ -171,6 +177,7 @@ LOGGING = {
         "level": "INFO",
     },
     "loggers": {
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
         "django.core.mail": {
             "handlers": ["console"],
             "level": "DEBUG",

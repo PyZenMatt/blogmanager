@@ -22,7 +22,7 @@ from rest_framework.routers import DefaultRouter
 
 from django.http import JsonResponse
 
-from blog_manager.blog.views import PostViewSet, SiteViewSet
+from blog_manager.blog_manager.blog.views import PostViewSet, SiteViewSet
 
 
 def root_redirect(request):
