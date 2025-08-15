@@ -131,7 +131,13 @@ class Post(models.Model):
     )
 
     # Editorial workflow fields
-    exported_hash = models.CharField(max_length=64, blank=True, default="")
+    exported_hash = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Hash dell'export (contenuto/front matter) per rilevare cambiamenti lato Jekyll."
+    )
     last_exported_at = models.DateTimeField(null=True, blank=True)
     STATUS_CHOICES = [
         ("draft", "Draft"),
