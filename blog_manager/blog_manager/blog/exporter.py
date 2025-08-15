@@ -117,8 +117,9 @@ def _git_has_changes(repo_path, relpath):
 
 def _git_add_commit_push(repo_path, relpath, message):
     subprocess.run(["git", "add", "--", relpath], cwd=repo_path, check=True)
-    # Commit solo se ci sono modifiche
-    subprocess.run(["git", "commit", "-m", message], cwd=repo_path, check=True)
+    # Commit solo se ci sono modifiche (evita commit vuoti che possono causare loop)
+    if _git_has_changes(repo_path, relpath):
+        subprocess.run(["git", "commit", "-m", message], cwd=repo_path, check=True)
     # push best-effort (se configurato)
     try:
         subprocess.run(["git", "push"], cwd=repo_path, check=True)
@@ -152,6 +153,10 @@ def render_markdown(post, site):
         # identico su disco: aggiorna hash e fine, niente commit
         return (False, content_hash, rel_path)
 
-    # Commit condizionale
-    _git_add_commit_push(repo_path, rel_path, f"Export post: {post.slug}")
+    # Commit condizionale: _git_add_commit_push ora verifica se ci sono cambiamenti
+    try:
+        _git_add_commit_push(repo_path, rel_path, f"Export post: {post.slug}")
+    except Exception:
+        # Non bloccare l'export se git fallisce: segnala come non scritto (ma abbiamo scritto su disco)
+        return (True, content_hash, rel_path)
     return (True, content_hash, rel_path)
