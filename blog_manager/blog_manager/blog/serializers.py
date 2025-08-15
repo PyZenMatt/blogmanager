@@ -99,16 +99,25 @@ class PostSerializer(serializers.ModelSerializer):
             )
         ]
 
+    def validate_status(self, value):
+        # Consenti bozza→pubblicato; evita published→draft salvo utenti staff
+        request = self.context.get("request")
+        instance = getattr(self, "instance", None)
+        if instance and instance.status == "published" and value == "draft":
+            if not request or not request.user or not request.user.is_staff:
+                raise serializers.ValidationError("Transizione non consentita.")
+        return value
+
     def validate_slug(self, value):
         import re
         import unicodedata
-        from django.utils.text import slugify as dj_slugify
         v = value
         v = re.sub(r"[\x00\uD800-\uDFFF]", "", v or "")
         try:
             v = unicodedata.normalize("NFKD", v)
         except Exception:
             pass
+        from django.utils.text import slugify as dj_slugify
         v = dj_slugify(v)[:200].strip("-") or "post"
         site = None
         if hasattr(self, "initial_data") and isinstance(self.initial_data, dict):
@@ -127,7 +136,7 @@ class PostSerializer(serializers.ModelSerializer):
         # Autogenerazione server-side se slug mancante
         if not validated_data.get("slug"):
             post = Post(**validated_data)
-            post.slug = Post.safe_slugify(site_id=post.site.id if hasattr(post.site, 'id') else post.site, title=post.title)
+            post.slug = Post.safe_slugify(site_id=post.site.pk, title=post.title)
             post.save()
             return post
         return super().create(validated_data)

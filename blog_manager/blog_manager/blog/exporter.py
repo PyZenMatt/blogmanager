@@ -1,3 +1,19 @@
+def export_post_to_jekyll(post):
+    """
+    Esporta il post su filesystem e fa commit su Jekyll.
+    Non modificare/salvare il post qui: evitare loop di segnali.
+    """
+    # Esempio: genera markdown
+    site = getattr(post, "site", None)
+    markdown = render_markdown(post, site)
+    # Qui andrebbe la logica di scrittura file e git commit/push
+    # Esempio:
+    #   path = build_post_relpath(post, site)
+    #   with open(path, "w", encoding="utf-8") as f:
+    #       f.write(markdown)
+    #   ...git add/commit/push...
+    # Per ora solo stub
+    return True
 """
 Exporter module for rendering Markdown with Jekyll-compatible front matter.
 Also provides helpers to compute canonical URL and post file path.

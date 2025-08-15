@@ -1,5 +1,5 @@
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, generics
+from rest_framework import filters, generics, decorators, permissions, response, status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.viewsets import ModelViewSet
@@ -188,6 +188,17 @@ class PostViewSet(ModelViewSet):
     search_fields = ["title", "slug", "content"]
     ordering_fields = ["published_at", "updated_at"]
     ordering = ["-published_at"]
+    
+    @decorators.action(detail=True, methods=["post"], url_path="publish", permission_classes=[permissions.IsAuthenticated])
+    def publish(self, request, pk=None):
+        post = self.get_object()
+        if post.status == "published":
+            return response.Response({"detail": "Già pubblicato."}, status=status.HTTP_200_OK)
+        post.status = "published"
+        # `published_at` verrà impostato in pre_save
+        post.save(update_fields=["status"])
+        ser = PostSerializer(post, context={"request": request})
+        return response.Response(ser.data, status=status.HTTP_200_OK)
 
     def get_permissions(self):
         # lettura per tutti, scrittura con permission custom
