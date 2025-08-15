@@ -49,7 +49,13 @@ DATABASES = {
         "OPTIONS": {
             "charset": "utf8mb4",
             "use_unicode": True,
-            "init_command": "SET sql_mode='STRICT_ALL_TABLES', time_zone='+00:00'",
+            # Ensure connection uses utf8mb4 and a compatible collation, enable strict mode
+            # SET NAMES forces client/connection character set so emoji won't raise
+            "init_command": (
+                "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci; "
+                "SET sql_mode='STRICT_ALL_TABLES'; "
+                "SET time_zone='+00:00'"
+            ),
         },
         "CONN_MAX_AGE": 60,  # keep-alive pooling
     }
