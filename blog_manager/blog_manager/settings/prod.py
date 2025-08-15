@@ -14,6 +14,7 @@ SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 GITHUB_TOKEN = env("GITHUB_TOKEN", default=None)
 
+EXPORT_ENABLED = False
 # MySQL via env; utf8mb4 + STRICT + conn pooling
 DATABASES = {
     "default": {

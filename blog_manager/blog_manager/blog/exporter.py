@@ -2,6 +2,7 @@ def export_post_to_jekyll(post):
     import os
     import subprocess
     from pathlib import Path
+    from django.conf import settings
     from .utils import render_markdown_for_export, content_hash
 
     EXPORT_ROOT = Path(os.environ.get("JEKYLL_EXPORT_ROOT", "export/_posts"))
@@ -12,6 +13,10 @@ def export_post_to_jekyll(post):
     fname = f"{date:%Y-%m-%d}-{post.slug}.md"
     fpath = EXPORT_ROOT / fname
     fpath.write_text(render_markdown_for_export(post), encoding="utf-8")
+
+    # Disabilita export git se EXPORT_ENABLED è False
+    if not getattr(settings, "EXPORT_ENABLED", True):
+        return hx
 
     def _run(cmd, cwd=None):
         subprocess.check_call(cmd, cwd=cwd or EXPORT_ROOT.parent)
