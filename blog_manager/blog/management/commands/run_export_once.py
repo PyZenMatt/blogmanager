@@ -8,12 +8,12 @@ class Command(BaseCommand):
         parser.add_argument("post_id", type=int, help="ID del Post da esportare")
 
     def handle(self, *args, **options):
+        from blog.exporter import render_markdown
         Post = apps.get_model("blog", "Post")
         post_id = options["post_id"]
         try:
             p = Post.objects.select_related("site").get(pk=post_id)
         except Post.DoesNotExist:
             raise CommandError(f"Post {post_id} non trovato")
-        from blog_manager.blog.exporter import render_markdown
         changed, h, rel = render_markdown(p, p.site)
         self.stdout.write(f"changed={changed} hash={h} path={rel}")

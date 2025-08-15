@@ -32,7 +32,7 @@ from datetime import datetime
 from django.conf import settings
 from typing import Optional, Tuple
 try:
-    from blog_manager.blog.utils.seo import slugify_title
+    from blog.utils.seo import slugify_title
 except ImportError:
     import re
     def slugify_title(value):

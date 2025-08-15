@@ -163,56 +163,54 @@ class AuthorViewSet(ModelViewSet):
 
 
 class PostViewSet(ModelViewSet):
+    queryset = Post.objects.all()
+    serializer_class = PostSerializer
+    permission_classes = [IsPublisherForWriteOrReadOnly]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, SafeOrderingFilter]
+    filterset_fields = ["site", "status"]
+    search_fields = ["title", "slug", "content"]
+    ordering_fields = ["published_at", "title", "id"]
+    ordering = ["-published_at", "-id"]
+
     def get_serializer_class(self):
         if self.action in ("create", "update", "partial_update"):
-            from blog_manager.blog.serializers import PostWriteSerializer
+            from blog.serializers import PostWriteSerializer
             return PostWriteSerializer
-        else:
-            from blog_manager.blog.serializers import PostSerializer
-            return PostSerializer
+        return PostSerializer
 
     def _unique_slug_for_site(self, *, site_id: int, base_slug: str) -> str:
         slug = base_slug
         i = 2
-        from blog_manager.blog.models import Post
         while Post.objects.filter(site_id=site_id, slug=slug).exists():
             slug = f"{base_slug}-{i}"
             i += 1
         return slug
 
     def perform_create(self, serializer):
-        # Normalizza slug e gestisci conflitti
         site_obj_or_id = serializer.validated_data.get("site")
         site_id = getattr(site_obj_or_id, "id", site_obj_or_id)
         title = serializer.validated_data.get("title") or ""
         desired_slug = serializer.validated_data.get("slug") or slugify(title)
-        auto_slug = (desired_slug == slugify(title))
-
-    from blog_manager.blog.models import Post
+        auto_slug = desired_slug == slugify(title)
         if Post.objects.filter(site_id=site_id, slug=desired_slug).exists():
             if auto_slug:
                 desired_slug = self._unique_slug_for_site(site_id=site_id, base_slug=desired_slug)
             else:
-                # Slug esplicito occupato => 409
                 raise Conflict()
-
         serializer.validated_data["slug"] = desired_slug
         obj = serializer.save()
-        if obj.status == "published" and not obj.published_at:
+        if getattr(obj, "status", None) == "published" and not getattr(obj, "published_at", None):
             obj.published_at = timezone.now()
             obj.save(update_fields=["published_at"])
 
     def perform_update(self, serializer):
         prev = self.get_object()
-        # Se l'update cambia slug/title, applica stessa logica di creazione
         data = serializer.validated_data
         site_obj_or_id = data.get("site", prev.site_id)
         site_id = getattr(site_obj_or_id, "id", site_obj_or_id)
         title = data.get("title", prev.title)
         desired_slug = data.get("slug", prev.slug) or slugify(title)
-        auto_slug = (desired_slug == slugify(title))
-
-    from blog_manager.blog.models import Post
+        auto_slug = desired_slug == slugify(title)
         conflict = Post.objects.filter(site_id=site_id, slug=desired_slug).exclude(pk=prev.pk).exists()
         if conflict:
             if auto_slug:
@@ -220,40 +218,22 @@ class PostViewSet(ModelViewSet):
             else:
                 raise Conflict()
         serializer.validated_data["slug"] = desired_slug
-
         obj = serializer.save()
-        if obj.status == "published" and not obj.published_at:
+        if getattr(obj, "status", None) == "published" and not getattr(obj, "published_at", None):
             obj.published_at = timezone.now()
             obj.save(update_fields=["published_at"])
-    # Usa l'implementazione base di ModelViewSet.create (nessun override personalizzato!)
-    # Usa l'implementazione base di ModelViewSet.create (nessun override)
 
-    queryset = Post.objects.all()
-    serializer_class = PostSerializer
-    permission_classes = [IsPublisherForWriteOrReadOnly]
-    filter_backends = [
-        DjangoFilterBackend,
-        filters.SearchFilter,
-        SafeOrderingFilter,
-    ]
-    filterset_fields = ["site", "status"]
-    search_fields = ["title", "slug", "content"]
-    ordering_fields = ["published_at", "title", "id"]
-    ordering = ["-published_at", "-id"]
-    
     @decorators.action(detail=True, methods=["post"], url_path="publish", permission_classes=[permissions.IsAuthenticated])
     def publish(self, request, pk=None):
         post = self.get_object()
         if post.status == "published":
             return response.Response({"detail": "Già pubblicato."}, status=status.HTTP_200_OK)
         post.status = "published"
-        # `published_at` verrà impostato in pre_save
         post.save(update_fields=["status"])
         ser = PostSerializer(post, context={"request": request})
         return response.Response(ser.data, status=status.HTTP_200_OK)
 
     def get_permissions(self):
-        # lettura per tutti, scrittura con permission custom
         if self.action in ["list", "retrieve"]:
             return [AllowAny()]
         return [IsPublisherForWriteOrReadOnly()]
@@ -261,37 +241,20 @@ class PostViewSet(ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         post = self.get_object()
         self.check_object_permissions(request, post)
-        old_path = post.last_export_path
-
+        old_path = getattr(post, "last_export_path", None)
         serializer = self.get_serializer(post, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
-
         post.refresh_from_db()
-        # Calcola nuovo path Jekyll
         new_slug = post.slug
         new_date = post.published_at
         site = post.site
-        filename = (
-            f"{new_date.strftime('%Y-%m-%d')}-{new_slug}.md"
-            if new_date and new_slug
-            else None
-        )
-        posts_dir = site.posts_dir if hasattr(site, "posts_dir") else "_posts"
+        filename = f"{new_date.strftime('%Y-%m-%d')}-{new_slug}.md" if new_date and new_slug else None
+        posts_dir = getattr(site, "posts_dir", "_posts")
         new_path = f"{posts_dir}/{filename}" if filename else None
-
-        # Se path cambia, gestisci rename
-        if old_path and new_path and old_path != new_path:
-            from blog_manager.blog.exporter import render_markdown
-
+        if new_path and (not old_path or new_path != old_path):
+            from blog.exporter import render_markdown
             _ = render_markdown(post, site)
             post.last_export_path = new_path
             post.save(update_fields=["last_export_path"])
-        elif new_path:
-            from blog_manager.blog.exporter import render_markdown
-
-            _ = render_markdown(post, site)
-            post.last_export_path = new_path
-            post.save(update_fields=["last_export_path"])
-
         return super().partial_update(request, *args, **kwargs)
