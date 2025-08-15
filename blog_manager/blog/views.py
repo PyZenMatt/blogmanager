@@ -246,7 +246,7 @@ class PostViewSet(ModelViewSet):
     queryset = Post.objects.all()
     serializer_class = PostSerializer
     permission_classes = [IsPublisherForWriteOrReadOnly]
-    from blog_manager.api.filters import SafeOrderingFilter
+    from api.filters import SafeOrderingFilter
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,

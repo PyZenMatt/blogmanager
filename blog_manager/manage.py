@@ -32,7 +32,7 @@ def main() -> None:
             "\n[Hint] Verifica che esista la cartella 'blog_manager' (package) "
             "accanto a questo manage.py, con __init__.py e la directory 'settings/'.\n"
             "Oppure imposta DJANGO_SETTINGS_MODULE, per esempio:\n"
-            "  export DJANGO_SETTINGS_MODULE=blog_manager.settings.dev\n"
+            "  export DJANGO_SETTINGS_MODULE=.settings.dev\n"
         )
         raise
     execute_from_command_line(sys.argv)
