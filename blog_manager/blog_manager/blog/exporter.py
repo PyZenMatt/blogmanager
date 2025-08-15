@@ -1,73 +1,16 @@
-def export_post_to_jekyll(post):
-    import os
-    import subprocess
-    from pathlib import Path
-    from django.conf import settings
-    from .utils import render_markdown_for_export, content_hash
-
-    EXPORT_ROOT = Path(os.environ.get("JEKYLL_EXPORT_ROOT", "export/_posts"))
-    EXPORT_ROOT.mkdir(parents=True, exist_ok=True)
-    hx = content_hash(post)
-    # path deterministico: YYYY-MM-DD-slug.md
-    date = (getattr(post, "date", None) or post.published_at).date()
-    fname = f"{date:%Y-%m-%d}-{post.slug}.md"
-    fpath = EXPORT_ROOT / fname
-    fpath.write_text(render_markdown_for_export(post), encoding="utf-8")
-
-    # Disabilita export git se EXPORT_ENABLED è False
-    if not getattr(settings, "EXPORT_ENABLED", True):
-        return hx
-
-    def _run(cmd, cwd=None):
-        subprocess.check_call(cmd, cwd=cwd or EXPORT_ROOT.parent)
-
-    # Stage e commit solo se dirty
-    _run(["git", "add", str(fpath)])
-    try:
-        subprocess.check_call(["git", "diff", "--cached", "--quiet"], cwd=EXPORT_ROOT.parent)
-        dirty = False
-    except subprocess.CalledProcessError:
-        dirty = True
-    if dirty:
-        _run(["git", "commit", "-m", f"Export post #{post.pk} ({post.slug})"])
-        _run(["git", "push"])
-    # ritorna l'hash calcolato per l’aggiornamento atomico
-    return hx
-"""
-Exporter module for rendering Markdown with Jekyll-compatible front matter.
-Also provides helpers to compute canonical URL and post file path.
-"""
-
-from datetime import datetime
-from typing import Optional, Tuple
-
-import yaml
-
-from blog_manager.blog.utils.seo import slugify_title
-
-
-def _date_parts(
-    dt: Optional[datetime],
-) -> Tuple[Optional[int], Optional[int], Optional[int]]:
-    if dt is None:
-        return None, None, None
-    return dt.year, dt.month, dt.day
-
-
-def build_post_relpath(post, site) -> str:
+# --- Jekyll helpers for publish.py ---
+def build_post_relpath(post, site):
     """
     Build the Jekyll post path: _posts/YYYY-MM-DD-slug.md using site's posts_dir.
     """
-    y, m, d = _date_parts(getattr(post, "published_at", None))
+    date = getattr(post, "published_at", None)
+    if not date:
+        return None
     slug = getattr(post, "slug", None) or slugify_title(getattr(post, "title", ""))
     posts_dir = (getattr(site, "posts_dir", None) or "_posts").strip("/")
-    if not (y and m and d and slug):
-        # Fallback for drafts: place under _drafts/slug.md
-        return f"_drafts/{slug or 'untitled'}.md"
-    return f"{posts_dir}/{y:04d}-{m:02d}-{d:02d}-{slug}.md"
+    return f"{posts_dir}/{date.strftime('%Y-%m-%d')}-{slug}.md"
 
-
-def compute_canonical_url(post, site) -> str | None:
+def compute_canonical_url(post, site):
     """
     Compute canonical URL if missing, using site's base_url and Jekyll permalinks pattern.
     Default pattern: /YYYY/MM/DD/slug.html
@@ -75,66 +18,140 @@ def compute_canonical_url(post, site) -> str | None:
     if getattr(post, "canonical_url", None):
         return post.canonical_url
     base_url = getattr(site, "base_url", "") or ""
-    y, m, d = _date_parts(getattr(post, "published_at", None))
+    date = getattr(post, "published_at", None)
     slug = getattr(post, "slug", None) or slugify_title(getattr(post, "title", ""))
-    if not (base_url and y and m and d and slug):
+    if not (base_url and date and slug):
         return None
     base_url = base_url.rstrip("/")
-    return f"{base_url}/{y:04d}/{m:02d}/{d:02d}/{slug}.html"
+    return f"{base_url}/{date.year:04d}/{date.month:02d}/{date.day:02d}/{slug}.html"
+import hashlib
+import os
+import subprocess
+from datetime import datetime
+from django.conf import settings
+from typing import Optional, Tuple
+try:
+    from blog_manager.blog.utils.seo import slugify_title
+except ImportError:
+    import re
+    def slugify_title(value):
+        value = str(value).strip().lower()
+        value = re.sub(r'[^a-z0-9]+', '-', value)
+        value = re.sub(r'-+', '-', value)
+        return value.strip('-')
 
+def _front_matter(post, site):
+    """
+    YAML deterministico: niente campi volatili (no timestamp di export),
+    chiavi ordinate stabilmente per evitare diff spurie.
+    """
+    # serializza solo campi “stabili” che servono al sito statico
+    data = {
+        "layout": "post",
+        "title": post.title or "",
+        "slug": post.slug or "",
+        "date": (post.published_at or post.updated_at or post.created_at).strftime("%Y-%m-%d %H:%M:%S"),
+        "categories": sorted([c.slug for c in post.categories.all()]) if hasattr(post, "categories") else [],
+        "tags": sorted([t.slug for t in post.tags.all()]) if hasattr(post, "tags") else [],
+        "canonical": getattr(post, "canonical_url", "") or "",
+        "description": getattr(post, "meta_description", "") or "",
+        # NON mettere last_exported_at / build_ts qui
+    }
+    # dump manuale ordinato (no dipendenze nuove)
+    lines = ["---"]
+    for k in sorted(data.keys()):
+        v = data[k]
+        if isinstance(v, list):
+            lines.append(f"{k}:")
+            for item in v:
+                lines.append(f"  - {item}")
+        else:
+            # scappa i due punti base
+            sv = str(v).replace(":", "\\:")
+            lines.append(f"{k}: {sv}")
+    lines.append("---")
+    return "\n".join(lines) + "\n"
+
+def _build_markdown(post, site):
+    fm = _front_matter(post, site)
+    body = getattr(post, "content", "") or getattr(post, "body", "") or ""
+    # normalizza newline finale
+    if not body.endswith("\n"):
+        body = body + "\n"
+    return fm + "\n" + body
+
+def _repo_base(site):
+    # repo path per ogni sito: priorità al campo del DB, poi settings
+    rp = getattr(site, "repo_path", None) or getattr(settings, "JEKYLL_REPO_BASE", None)
+    if not rp:
+        raise RuntimeError("Repo path non configurato: setta site.repo_path o settings.JEKYLL_REPO_BASE")
+    return rp
+
+def _safe_write(filepath, content):
+    """
+    Scrive solo se il contenuto cambia, in modo atomico.
+    Ritorna True se ha scritto (cioè se c'era una differenza), False se identico.
+    """
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                old = f.read()
+            if old == content:
+                return False
+        except Exception:
+            # se non leggibile, procedi a riscrivere
+            pass
+    tmp = filepath + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write(content)
+    os.replace(tmp, filepath)
+    return True
+def _git_has_changes(repo_path, relpath):
+    # Controlla se ci sono modifiche per quel file
+    res = subprocess.run(
+        ["git", "status", "--porcelain", "--", relpath],
+        cwd=repo_path, capture_output=True, text=True
+    )
+    return bool(res.stdout.strip())
+
+def _git_add_commit_push(repo_path, relpath, message):
+    subprocess.run(["git", "add", "--", relpath], cwd=repo_path, check=True)
+    # Commit solo se ci sono modifiche
+    subprocess.run(["git", "commit", "-m", message], cwd=repo_path, check=True)
+    # push best-effort (se configurato)
+    try:
+        subprocess.run(["git", "push"], cwd=repo_path, check=True)
+    except Exception:
+        pass
+    return True
 
 def render_markdown(post, site):
     """
-    Renders a Post object to Markdown with Jekyll-compatible YAML front matter.
-    Args:
-        post (Post): The post instance.
-        site (dict): Site-wide settings (optional fields).
-    Returns:
-        str: Markdown string with YAML front matter.
+    Genera markdown deterministico per il post e lo salva nel repo Jekyll.
+    Ritorna (changed: bool, content_hash: str, file_path: str)
+    - changed=False  => nessuna scrittura/commit; evita commit vuoti e loop
+    - changed=True   => contenuto aggiornato e commit se necessario
     """
-    # Prepare front matter fields
-    front_matter = {
-        "title": post.title,
-        "date": (
-            post.published_at.isoformat()
-            if hasattr(post, "published_at") and post.published_at
-            else None
-        ),
-        "slug": slugify_title(post.title),
-        "description": getattr(post, "description", None),
-        "tags": (
-            [t.name for t in post.tags.all()]
-            if hasattr(post.tags, "all")
-            else post.tags
-        ),
-        "categories": (
-            [c.name for c in post.categories.all()]
-            if hasattr(post.categories, "all")
-            else post.categories
-        ),
-        # Usa sempre URL esterni per le immagini
-        "image": getattr(post, "image", None)
-        or getattr(post, "og_image_url", None)
-        or getattr(post, "background", None),
-        "canonical": getattr(post, "canonical_url", None)
-        or compute_canonical_url(post, site),
-        "meta_title": getattr(post, "meta_title", None),
-        "meta_description": getattr(post, "meta_description", None),
-        "meta_keywords": getattr(post, "meta_keywords", None),
-        "og_title": getattr(post, "og_title", None),
-        "og_description": getattr(post, "og_description", None),
-        "og_image": getattr(post, "og_image", None)
-        or getattr(post, "og_image_url", None),
-        "noindex": getattr(post, "noindex", False),
-    }
-    # Remove None values
-    front_matter = {k: v for k, v in front_matter.items() if v is not None}
-    yaml_front = yaml.dump(front_matter, allow_unicode=True, sort_keys=False)
+    content = _build_markdown(post, site)
+    content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
-    # Compose markdown
-    body = getattr(post, "body", None)
-    if body is None:
-        body = getattr(post, "content", "")
-    # Se in futuro si vuole gestire la strategia commit, qui si può aggiungere la logica
-    markdown = f"---\n{yaml_front}---\n\n{body}\n"
-    return markdown
+    # Se l'hash coincide con quello già esportato, short-circuit
+    if getattr(post, "exported_hash", None) == content_hash:
+        file_date = (post.published_at or post.updated_at or post.created_at).strftime("%Y-%m-%d")
+        rel_path = f"{getattr(site, 'posts_dir', '_posts')}/{file_date}-{post.slug}.md"
+        return (False, content_hash, rel_path)
+
+    repo_path = _repo_base(site)
+    file_date = (post.published_at or post.updated_at or post.created_at).strftime("%Y-%m-%d")
+    rel_path = f"{getattr(site, 'posts_dir', '_posts')}/{file_date}-{post.slug}.md"
+    abs_path = os.path.join(repo_path, rel_path)
+
+    written = _safe_write(abs_path, content)
+    if not written:
+        # identico su disco: aggiorna hash e fine, niente commit
+        return (False, content_hash, rel_path)
+
+    # Commit condizionale
+    _git_add_commit_push(repo_path, rel_path, f"Export post: {post.slug}")
+    return (True, content_hash, rel_path)

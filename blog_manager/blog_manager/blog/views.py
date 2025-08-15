@@ -116,7 +116,6 @@ class PostListView(generics.ListAPIView):
             )
         return queryset.distinct()
 
-
 class PostDetailView(generics.RetrieveUpdateAPIView):
     queryset = Post.objects.all()
     serializer_class = PostSerializer
@@ -297,12 +296,18 @@ class PostViewSet(ModelViewSet):
 
         # Avvia l’export e l’aggiornamento dei meta dopo il commit
         from django.db import transaction
-        from .exporter import render_markdown
+        from .exporter import render_markown as _rm  # compat se rinominato; correggi se serve
+        from .exporter import render_markdown        # preferito
         from .models import Post as PostModel
 
         def _commit():
-            render_markdown(post, site)
-            PostModel.objects.filter(pk=post.pk).update(last_export_path=new_path)
+            # l’exporter è idempotente e aggiorneremo hash/metadati solo se cambia
+            changed, content_hash, file_path = render_markdown(post, site)
+            if changed:
+                PostModel.objects.filter(pk=post.pk).update(
+                    last_export_path=file_path,
+                    exported_hash=content_hash,
+                )
         transaction.on_commit(_commit)
 
         # restituisci subito la risposta, evitando il doppio update
