@@ -1,3 +1,13 @@
+
+from rest_framework.exceptions import APIException
+from http import HTTPStatus
+from django.utils.text import slugify
+from django.utils import timezone
+
+class Conflict(APIException):
+    # Usa HTTPStatus per non dipendere dall'ordine degli import
+    status_code = HTTPStatus.CONFLICT
+    default_detail = "Conflitto: slug già in uso per questo sito."
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, generics, decorators, permissions, response, status
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -80,6 +90,19 @@ class PostListView(generics.ListAPIView):
     def get_queryset(self):
         queryset = Post.objects.all()
         site = self.request.query_params.get("site")
+
+        def perform_create(self, serializer):
+            obj = serializer.save()
+            if obj.status == "published" and not obj.published_at:
+                obj.published_at = timezone.now()
+                obj.save(update_fields=["published_at"])
+
+        def perform_update(self, serializer):
+            prev = self.get_object()
+            obj = serializer.save()
+            if obj.status == "published" and not obj.published_at:
+                obj.published_at = timezone.now()
+                obj.save(update_fields=["published_at"])
         if site:
             queryset = queryset.filter(site__domain=site)
         category = self.request.query_params.get("category")
@@ -156,25 +179,69 @@ class AuthorViewSet(ModelViewSet):
 
 
 class PostViewSet(ModelViewSet):
-    def create(self, request, *args, **kwargs):
-        from django.db import IntegrityError, transaction
-        from rest_framework import status
-        from rest_framework.response import Response
+    def get_serializer_class(self):
+        if self.action in ("create", "update", "partial_update"):
+            from .serializers import PostWriteSerializer
+            return PostWriteSerializer
+        from .serializers import PostSerializer
+        return PostSerializer
 
-        serializer = self.get_serializer(data=request.data)
-        try:
-            serializer.is_valid(raise_exception=True)
-            with transaction.atomic():
-                self.perform_create(serializer)
-        except IntegrityError:
-            return Response(
-                {"detail": "Integrity error"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        except Exception:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=201, headers=headers)
+    def _unique_slug_for_site(self, *, site_id: int, base_slug: str) -> str:
+        slug = base_slug
+        i = 2
+        from .models import Post
+        while Post.objects.filter(site_id=site_id, slug=slug).exists():
+            slug = f"{base_slug}-{i}"
+            i += 1
+        return slug
+
+    def perform_create(self, serializer):
+        # Normalizza slug e gestisci conflitti
+        site_obj_or_id = serializer.validated_data.get("site")
+        site_id = getattr(site_obj_or_id, "id", site_obj_or_id)
+        title = serializer.validated_data.get("title") or ""
+        desired_slug = serializer.validated_data.get("slug") or slugify(title)
+        auto_slug = (desired_slug == slugify(title))
+
+        from .models import Post
+        if Post.objects.filter(site_id=site_id, slug=desired_slug).exists():
+            if auto_slug:
+                desired_slug = self._unique_slug_for_site(site_id=site_id, base_slug=desired_slug)
+            else:
+                # Slug esplicito occupato => 409
+                raise Conflict()
+
+        serializer.validated_data["slug"] = desired_slug
+        obj = serializer.save()
+        if obj.status == "published" and not obj.published_at:
+            obj.published_at = timezone.now()
+            obj.save(update_fields=["published_at"])
+
+    def perform_update(self, serializer):
+        prev = self.get_object()
+        # Se l'update cambia slug/title, applica stessa logica di creazione
+        data = serializer.validated_data
+        site_obj_or_id = data.get("site", prev.site_id)
+        site_id = getattr(site_obj_or_id, "id", site_obj_or_id)
+        title = data.get("title", prev.title)
+        desired_slug = data.get("slug", prev.slug) or slugify(title)
+        auto_slug = (desired_slug == slugify(title))
+
+        from .models import Post
+        conflict = Post.objects.filter(site_id=site_id, slug=desired_slug).exclude(pk=prev.pk).exists()
+        if conflict:
+            if auto_slug:
+                desired_slug = self._unique_slug_for_site(site_id=site_id, base_slug=desired_slug)
+            else:
+                raise Conflict()
+        serializer.validated_data["slug"] = desired_slug
+
+        obj = serializer.save()
+        if obj.status == "published" and not obj.published_at:
+            obj.published_at = timezone.now()
+            obj.save(update_fields=["published_at"])
+    # Usa l'implementazione base di ModelViewSet.create (nessun override personalizzato!)
+    # Usa l'implementazione base di ModelViewSet.create (nessun override)
 
     queryset = Post.objects.all()
     serializer_class = PostSerializer

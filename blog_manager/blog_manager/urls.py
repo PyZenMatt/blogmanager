@@ -39,6 +39,6 @@ urlpatterns = [
     path("api/contact/", include("blog_manager.contact.urls")),
     path("api/blog/", include("blog_manager.blog.urls")),
     # Expose /api/sites/ (list/create) and /api/sites/<id>/ via DRF router
-    path("api/", include(router.urls)),
+    path("api/", include((router.urls, "api"), namespace="api")),
     path("writer/", include("blog_manager.writer.urls", namespace="writer")),
 ]

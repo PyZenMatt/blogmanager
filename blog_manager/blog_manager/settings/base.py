@@ -1,3 +1,5 @@
+# Feature flag per disattivare export in dev/local se serve debug
+EXPORT_ENABLED = True
 import os
 import sys
 from pathlib import Path
@@ -26,9 +28,9 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS") if "ALLOWED_HOSTS" in os.environ else 
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
-        "NAME": "blogmanager_db",
-        "USER": "bloguser",
-        "PASSWORD": "blogpass",
+        "NAME": "blogmanager",
+        "USER": "teo",
+        "PASSWORD": "OilPainter@25!",
         "HOST": "127.0.0.1",
         "PORT": "3306",
         "OPTIONS": {
@@ -55,16 +57,18 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "blog_manager.contact",
-    "corsheaders",
+    # App di progetto
     "blog_manager.blog",
+    "blog_manager.contact",
+    "blog_manager.writer",
+    # Terze parti
+    "corsheaders",
     "anymail",
     "rest_framework",
     "django_filters",
     "cloudinary",
     "cloudinary_storage",
     "rest_framework.authtoken",
-    "blog_manager.writer",
 ]
 
 MIDDLEWARE = [

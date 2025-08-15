@@ -113,7 +113,7 @@ class Post(models.Model):
     title = models.CharField(max_length=200)
     slug = models.SlugField()
     author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True)
-    categories = models.ManyToManyField(Category, related_name="posts")
+    categories = models.ManyToManyField(Category, related_name="posts", blank=True)
     content = models.TextField()  # Markdown o HTML
     published_at = models.DateTimeField(null=True, blank=True)
     is_published = models.BooleanField(default=False)
@@ -131,6 +131,8 @@ class Post(models.Model):
     )
 
     # Editorial workflow fields
+    exported_hash = models.CharField(max_length=64, blank=True, default="")
+    last_exported_at = models.DateTimeField(null=True, blank=True)
     STATUS_CHOICES = [
         ("draft", "Draft"),
         ("review", "Review"),
