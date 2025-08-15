@@ -6,17 +6,8 @@ from .models import Author, Category, Comment, Post, PostImage, Site
 
 @admin.register(Site)
 class SiteAdmin(admin.ModelAdmin):
-    list_display = (
-        "name",
-        "domain",
-        "repo_owner",
-        "repo_name",
-        "default_branch",
-        "posts_dir",
-        "media_dir",
-        "base_url",
-    )
-    search_fields = ("name", "domain", "repo_owner", "repo_name")
+    list_display = ("id", "name")
+    search_fields = ("name",)
     fieldsets = (
         (None, {"fields": ("name", "domain")}),
         (
@@ -38,32 +29,25 @@ class SiteAdmin(admin.ModelAdmin):
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ("name", "site", "slug")
+    list_display = ("id", "name", "slug", "site")
     search_fields = ("name", "slug")
     list_filter = ("site",)
 
 
 @admin.register(Author)
 class AuthorAdmin(admin.ModelAdmin):
-    list_display = ("name", "site", "slug")
+    list_display = ("id", "name", "slug", "site")
     search_fields = ("name", "slug")
     list_filter = ("site",)
 
 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
-    list_display = (
-        "title",
-        "site",
-        "author",
-        "status",
-        "published_at",
-        "is_published",
-        "updated_at",
-        "reviewed_by",
-    )
-    search_fields = ("title", "slug", "content")
-    list_filter = ("site", "author", "is_published", "status")
+    list_display = ("id", "title", "slug", "status", "published_at", "site")
+    list_filter = ("status", "site", "published_at", "categories", "tags")
+    search_fields = ("title", "slug", "body", "meta_title", "meta_description")
+    autocomplete_fields = ("author", "categories")
+    date_hierarchy = "published_at"
     prepopulated_fields = {"slug": ("title",)}
     filter_horizontal = ("categories",)
 
@@ -123,9 +107,9 @@ PostAdmin.inlines = [PostImageInline]
 
 @admin.register(Comment)
 class CommentAdmin(admin.ModelAdmin):
-    list_display = ("post", "author_name", "author_email", "created_at")
+    list_display = ("id", "post", "author_name", "author_email", "created_at")
+    list_filter = ("created_at",)
     search_fields = ("author_name", "author_email", "text")
-    list_filter = ("post",)
 
 
 @admin.register(PostImage)
