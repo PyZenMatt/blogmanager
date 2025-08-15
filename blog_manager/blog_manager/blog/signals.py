@@ -35,10 +35,13 @@ def _do_export_and_update(post_id: int) -> None:
     PostModel.objects.filter(pk=p.pk).update(**update_kwargs)
 
 from django.apps import apps
+
+
 @receiver(post_save, sender=None)
 def trigger_export_on_publish(sender, instance, created, update_fields=None, **kwargs):
-    # Dynamically get Post model
-    Post = apps.get_model('blog_manager.blog', 'Post')
+    # Dynamically get Post model using the app label (not the full module path).
+    # AppConfig.name can be "blog_manager.blog" but the app label is usually "blog".
+    Post = apps.get_model("blog", "Post")
     if sender != Post:
         return
     # evita loop da salvataggi interni
