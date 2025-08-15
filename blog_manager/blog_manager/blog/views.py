@@ -278,17 +278,15 @@ class PostViewSet(ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         post = self.get_object()
         self.check_object_permissions(request, post)
-        old_path = post.last_export_path
-
         serializer = self.get_serializer(post, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
 
+        # Recupera lo stato aggiornato
         post.refresh_from_db()
-        # Calcola nuovo path Jekyll
-        new_slug = post.slug
-        new_date = post.published_at
         site = post.site
+        new_date = post.published_at
+        new_slug = post.slug
         filename = (
             f"{new_date.strftime('%Y-%m-%d')}-{new_slug}.md"
             if new_date and new_slug
@@ -297,18 +295,15 @@ class PostViewSet(ModelViewSet):
         posts_dir = site.posts_dir if hasattr(site, "posts_dir") else "_posts"
         new_path = f"{posts_dir}/{filename}" if filename else None
 
-        # Se path cambia, gestisci rename
-        if old_path and new_path and old_path != new_path:
-            from .exporter import render_markdown
+        # Avvia l’export e l’aggiornamento dei meta dopo il commit
+        from django.db import transaction
+        from .exporter import render_markdown
+        from .models import Post as PostModel
 
-            _ = render_markdown(post, site)
-            post.last_export_path = new_path
-            post.save(update_fields=["last_export_path"])
-        elif new_path:
-            from .exporter import render_markdown
+        def _commit():
+            render_markdown(post, site)
+            PostModel.objects.filter(pk=post.pk).update(last_export_path=new_path)
+        transaction.on_commit(_commit)
 
-            _ = render_markdown(post, site)
-            post.last_export_path = new_path
-            post.save(update_fields=["last_export_path"])
-
-        return super().partial_update(request, *args, **kwargs)
+        # restituisci subito la risposta, evitando il doppio update
+        return response.Response(serializer.data, status=status.HTTP_200_OK)
