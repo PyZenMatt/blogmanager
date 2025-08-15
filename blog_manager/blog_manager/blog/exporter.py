@@ -1,19 +1,33 @@
 def export_post_to_jekyll(post):
-    """
-    Esporta il post su filesystem e fa commit su Jekyll.
-    Non modificare/salvare il post qui: evitare loop di segnali.
-    """
-    # Esempio: genera markdown
-    site = getattr(post, "site", None)
-    markdown = render_markdown(post, site)
-    # Qui andrebbe la logica di scrittura file e git commit/push
-    # Esempio:
-    #   path = build_post_relpath(post, site)
-    #   with open(path, "w", encoding="utf-8") as f:
-    #       f.write(markdown)
-    #   ...git add/commit/push...
-    # Per ora solo stub
-    return True
+    import os
+    import subprocess
+    from pathlib import Path
+    from .utils import render_markdown_for_export, content_hash
+
+    EXPORT_ROOT = Path(os.environ.get("JEKYLL_EXPORT_ROOT", "export/_posts"))
+    EXPORT_ROOT.mkdir(parents=True, exist_ok=True)
+    hx = content_hash(post)
+    # path deterministico: YYYY-MM-DD-slug.md
+    date = (getattr(post, "date", None) or post.published_at).date()
+    fname = f"{date:%Y-%m-%d}-{post.slug}.md"
+    fpath = EXPORT_ROOT / fname
+    fpath.write_text(render_markdown_for_export(post), encoding="utf-8")
+
+    def _run(cmd, cwd=None):
+        subprocess.check_call(cmd, cwd=cwd or EXPORT_ROOT.parent)
+
+    # Stage e commit solo se dirty
+    _run(["git", "add", str(fpath)])
+    try:
+        subprocess.check_call(["git", "diff", "--cached", "--quiet"], cwd=EXPORT_ROOT.parent)
+        dirty = False
+    except subprocess.CalledProcessError:
+        dirty = True
+    if dirty:
+        _run(["git", "commit", "-m", f"Export post #{post.pk} ({post.slug})"])
+        _run(["git", "push"])
+    # ritorna l'hash calcolato per l’aggiornamento atomico
+    return hx
 """
 Exporter module for rendering Markdown with Jekyll-compatible front matter.
 Also provides helpers to compute canonical URL and post file path.
