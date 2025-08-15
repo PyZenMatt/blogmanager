@@ -1,5 +1,8 @@
 from django.contrib import admin
 from django.utils.html import format_html
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .models import Author, Category, Comment, Post, PostImage, Site
 
@@ -90,6 +93,18 @@ class PostAdmin(admin.ModelAdmin):
     )
 
     # Model-level validation is enforced via model.clean() and forms.
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        try:
+            logger.debug(
+                "Admin change_view about to load Post pk=%s user=%s",
+                object_id,
+                getattr(request.user, "username", "?"),
+            )
+            return super().change_view(request, object_id, form_url, extra_context)
+        except Exception:
+            logger.exception("Admin change_view FAILED for Post pk=%s", object_id)
+            raise
 
 
 # Inline dichiarato DOPO la classe PostAdmin

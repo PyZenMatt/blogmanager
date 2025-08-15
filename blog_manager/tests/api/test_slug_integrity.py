@@ -30,7 +30,7 @@ def test_same_title_same_site_gets_suffix():
     client.force_authenticate(user=user)
     s = make_site().id
     author = Author.objects.create(site_id=s, name="Autore", slug="autore")
-    from blog_manager.blog.views import PostViewSet
+    from blog_manager.blog_manager.blog.views import PostViewSet
     serializer = PostViewSet.serializer_class()
     print("Serializer fields:", serializer.get_fields().keys())
     r1 = client.post(reverse("api:post-list"), payload(s, author.id, title="Ciao mondo"), format="json")

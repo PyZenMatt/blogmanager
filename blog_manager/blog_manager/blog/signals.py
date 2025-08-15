@@ -3,6 +3,7 @@ from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
+from django.conf import settings
 ## Do not import models at module level to avoid AppRegistryNotReady
 
 # flag per evitare ricorsioni da salvataggi interni
@@ -46,6 +47,9 @@ def trigger_export_on_publish(sender, instance, created, update_fields=None, **k
         return
     # evita loop da salvataggi interni
     if _SKIP_EXPORT.get():
+        return
+    # feature flag globale (es. in dev) per disattivare export automatico
+    if not getattr(settings, "EXPORT_ENABLED", True):
         return
     # se vengono modificati solo i meta, non esportare nuovamente
     if update_fields and set(update_fields).issubset(_EXPORT_META_FIELDS):

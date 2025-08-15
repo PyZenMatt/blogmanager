@@ -46,13 +46,51 @@ def _front_matter(post, site):
     chiavi ordinate stabilmente per evitare diff spurie.
     """
     # serializza solo campi “stabili” che servono al sito statico
+    import re
+
+    def _collect_tags(p):
+        """Ritorna lista di slug tag in modo robusto.
+        Supporta:
+        - ManyToMany/Taggit (ha .all())
+        - Campo testuale CSV/newline (come nel model corrente: TextField)
+        - Assenza del campo
+        """
+        raw = getattr(p, "tags", None)
+        if raw is None:
+            return []
+        # Taggit / M2M like
+        if hasattr(raw, "all"):
+            try:
+                items = []
+                for x in raw.all():
+                    slug = getattr(x, "slug", None) or getattr(x, "name", None)
+                    if slug:
+                        items.append(str(slug).strip())
+                return sorted({i for i in items if i})
+            except Exception:
+                return []
+        # Stringa semplice
+        if isinstance(raw, str):
+            parts = [s.strip() for s in re.split(r"[\n,]+", raw) if s.strip()]
+            # slugify basica per consistenza se manca slugify_title
+            norm = []
+            for part in parts:
+                try:
+                    s = slugify_title(part)
+                except Exception:
+                    s = part.lower().replace(" ", "-")
+                norm.append(s)
+            return sorted({n for n in norm if n})
+        return []
+
     data = {
         "layout": "post",
         "title": post.title or "",
         "slug": post.slug or "",
         "date": (post.published_at or post.updated_at or post.created_at).strftime("%Y-%m-%d %H:%M:%S"),
         "categories": sorted([c.slug for c in post.categories.all()]) if hasattr(post, "categories") else [],
-        "tags": sorted([t.slug for t in post.tags.all()]) if hasattr(post, "tags") else [],
+        # tags può essere un TextField CSV/newline oppure un M2M/Taggit
+        "tags": _collect_tags(post),
         "canonical": getattr(post, "canonical_url", "") or "",
         "description": getattr(post, "meta_description", "") or "",
         # NON mettere last_exported_at / build_ts qui
