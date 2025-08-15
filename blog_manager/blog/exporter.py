@@ -132,10 +132,42 @@ def _build_markdown(post, site):
 logger = logging.getLogger("blog.exporter")
 
 def _repo_base(site):
-    # repo path per ogni sito: priorità al campo del DB, poi settings
-    rp = getattr(site, "repo_path", None) or getattr(settings, "JEKYLL_REPO_BASE", None)
-    if not rp:
-        raise RuntimeError("Repo path non configurato: setta site.repo_path o settings.JEKYLL_REPO_BASE")
+    # Try multiple strategies to determine the repo path for a site.
+    # Priority:
+    # 1) explicit site.repo_path (if present)
+    # 2) site.repo_owner + site.repo_name joined under settings.JEKYLL_REPO_BASE (if set)
+    # 3) site.repo_owner + site.repo_name under BASE_DIR/jekyll_repos (convention)
+    # 4) settings.JEKYLL_REPO_BASE fallback
+    rp = getattr(site, "repo_path", None)
+    if rp:
+        candidate = rp
+    else:
+        owner = getattr(site, "repo_owner", None)
+        name = getattr(site, "repo_name", None)
+        base = getattr(settings, "JEKYLL_REPO_BASE", None)
+        if owner and name:
+            if base:
+                candidate = os.path.join(base, owner, name)
+            else:
+                # try a conventional location under project BASE_DIR if available
+                base_dir = getattr(settings, "BASE_DIR", None)
+                if base_dir:
+                    candidate = os.path.join(str(base_dir), "jekyll_repos", owner, name)
+                else:
+                    candidate = None
+        else:
+            # final fallback to JEKYLL_REPO_BASE if set (covers single-repo setups)
+            candidate = getattr(settings, "JEKYLL_REPO_BASE", None)
+
+
+    if not candidate:
+        # No repository configuration found for this site. Return None and let caller
+        # decide how to handle skipping export instead of raising an exception.
+        return None
+
+    # Normalize candidate to string path
+    rp = str(candidate)
+
     if not os.path.isdir(rp):
         logger.warning("Repo path %s non esiste come directory", rp)
     elif not os.path.isdir(os.path.join(rp, ".git")):
@@ -234,6 +266,18 @@ def render_markdown(post, site):
     repo_path = _repo_base(site)
     file_date = _select_date(post).strftime("%Y-%m-%d")
     rel_path = f"{getattr(site, 'posts_dir', '_posts')}/{file_date}-{post.slug}.md"
+
+    # If no repo configured for this site, skip export but record status instead
+    if not repo_path:
+        logger.warning("[export] Nessun repo configurato per site %s: skip export per post %s", getattr(site, 'id', None), getattr(post, 'slug', None))
+        try:
+            post.export_status = 'failed'
+            post.last_export_path = f"SKIPPED: no repo configured for site {getattr(site, 'id', None)}"
+            post.save(update_fields=['export_status', 'last_export_path'])
+        except Exception:
+            logger.exception("[export] Impossibile aggiornare lo stato export per post %s", getattr(post, 'id', None))
+        return (False, content_hash, rel_path)
+
     abs_path = os.path.join(repo_path, rel_path)
 
     written = _safe_write(abs_path, content)
@@ -248,7 +292,30 @@ def render_markdown(post, site):
         ok = _git_add_commit_push(repo_path, rel_path, f"Export post: {post.slug}")
         if not ok:
             logger.warning("[export] git add/commit/push non riuscito per %s", rel_path)
+            try:
+                post.export_status = 'failed'
+                post.last_export_path = rel_path
+                post.save(update_fields=['export_status', 'last_export_path'])
+            except Exception:
+                logger.exception("[export] Impossibile aggiornare lo stato export dopo fallimento git per post %s", getattr(post, 'id', None))
+        else:
+            # Mark successful export
+            try:
+                post.exported_hash = content_hash
+                from django.utils import timezone as _tz
+                post.exported_at = _tz.now()
+                post.export_status = 'success'
+                post.last_export_path = rel_path
+                post.save(update_fields=['exported_hash', 'exported_at', 'export_status', 'last_export_path'])
+            except Exception:
+                logger.exception("[export] Impossibile aggiornare post dopo export per %s", getattr(post, 'id', None))
     except Exception as e:
         logger.exception("[export] Errore inatteso durante commit/push per %s: %s", rel_path, e)
+        try:
+            post.export_status = 'failed'
+            post.last_export_path = rel_path
+            post.save(update_fields=['export_status', 'last_export_path'])
+        except Exception:
+            logger.exception("[export] Impossibile aggiornare lo stato export dopo eccezione per post %s", getattr(post, 'id', None))
         return (True, content_hash, rel_path)
     return (True, content_hash, rel_path)
