@@ -20,6 +20,8 @@ from django.shortcuts import redirect
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from django.http import JsonResponse
+
 from blog_manager.blog.views import PostViewSet, SiteViewSet
 
 
@@ -40,5 +42,6 @@ urlpatterns = [
     path("api/blog/", include("blog_manager.blog.urls")),
     # Expose /api/sites/ (list/create) and /api/sites/<id>/ via DRF router
     path("api/", include((router.urls, "api"), namespace="api")),
+    path("api/health/", lambda r: JsonResponse({"ok": True}, status=200)),
     path("writer/", include("blog_manager.writer.urls", namespace="writer")),
 ]
