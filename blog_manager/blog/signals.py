@@ -1,6 +1,6 @@
 from contextvars import ContextVar
+from contextlib import suppress
 import logging
-from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
@@ -69,5 +69,7 @@ def trigger_export_on_publish(sender, instance, created, update_fields=None, **k
         logger.debug("[signals] Stato non published (status=%s) => no export", getattr(instance, 'status', None))
         return
     logger.debug("[signals] Pianifico export post id=%s slug=%s", getattr(instance, 'pk', None), getattr(instance, 'slug', None))
-    # avvia l’export dopo il commit
-    transaction.on_commit(lambda: _do_export_and_update(instance.pk))
+    # Chiamata sincrona: se spinge fallisce, non rompe il salvataggio del post.
+    with suppress(Exception):
+        from .exporter import export_post
+        export_post(instance)
