@@ -1,4 +1,4 @@
-from .base import *
+from .base import *  # noqa
 
 DEBUG = False
 # --- DRF: JSON only in prod, no browsable API ---
@@ -36,7 +36,7 @@ SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 GITHUB_TOKEN = env("GITHUB_TOKEN", default=None)
 
-EXPORT_ENABLED = False
+# EXPORT_ENABLED letto da env in base.py; non sovrascrivere qui.
 # MySQL via env; utf8mb4 + STRICT + conn pooling
 DATABASES = {
     "default": {

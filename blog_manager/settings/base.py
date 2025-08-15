@@ -1,12 +1,15 @@
-# Feature flag per disattivare export in dev/local se serve debug
-EXPORT_ENABLED = True
+"""Impostazioni base.
+
+La flag EXPORT_ENABLED ora è controllata via variabile d'ambiente EXPORT_ENABLED
+ (default True) per evitare confusione con override hardcoded in dev/prod.
+"""
 import os
 import sys
 from pathlib import Path
 import environ
 
 # Setup environ
-env = environ.Env(DEBUG=(bool, False))
+env = environ.Env(DEBUG=(bool, False), EXPORT_ENABLED=(bool, True))
 # Carica .env
 environ.Env.read_env(os.getenv("ENV_FILE", ".env"))
 
@@ -23,6 +26,7 @@ EMAIL_HOST_USER = env("EMAIL_HOST_USER", default=None)
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default=None)
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=None)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default=None)
+JEKYLL_REPO_BASE = env("JEKYLL_REPO_BASE", default=None)
 DEBUG = env.bool("DEBUG") if "DEBUG" in os.environ else False
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS") if "ALLOWED_HOSTS" in os.environ else []
 DATABASES = {
@@ -57,10 +61,10 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # App di progetto
-    "blog_manager.blog",
-    "blog_manager.contact",
-    "blog_manager.writer",
+    # App di progetto (usare il path all'AppConfig per garantire ready() e label corretti)
+    "blog",
+    "contact",
+    "writer",
     # Terze parti
     "corsheaders",
     "anymail",
@@ -83,7 +87,15 @@ MIDDLEWARE = [
 ]
 MIDDLEWARE.insert(0, "blog_manager.writer.middleware.LoginRateLimitMiddleware")
 # Insert verbose exception logging middleware (activated via env ENABLE_VERBOSE_ERRORS)
-MIDDLEWARE.append("blog_manager.core.middleware.exception_logging.VerboseExceptionLoggingMiddleware")
+# NOTE:
+# The 'core' package lives as a sibling of the inner 'blog_manager' package
+# (project layout: outer_dir/blog_manager/{core, blog_manager, ...}).
+# Because the outer 'blog_manager' directory is added to PYTHONPATH and only
+# the *inner* 'blog_manager' directory is a package (it has __init__.py),
+# importing 'blog_manager.core....' fails in production since 'core' is not
+# inside the inner package. Refer to it as a top-level package instead.
+# This prevents: ModuleNotFoundError: No module named 'blog_manager.core'
+MIDDLEWARE.append("core.middleware.exception_logging.VerboseExceptionLoggingMiddleware")
 
 ROOT_URLCONF = "blog_manager.urls"
 
@@ -149,6 +161,9 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 10,
 }
 
+# Feature flag export (ora dopo aver caricato env)
+EXPORT_ENABLED = env.bool("EXPORT_ENABLED", default=True)
+
 # Logging
 LOGGING = {
     "version": 1,
@@ -179,11 +194,11 @@ LOGGING = {
     "loggers": {
         "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
         "django.core.mail": {
-            "handlers": ["console"],
-            "level": "DEBUG",
-            "propagate": True,
+            "handlers": ["console"], "level": "DEBUG", "propagate": True,
         },
         "django.db.backends": {"level": "WARNING"},
         "core.rest.exceptions": {"level": "INFO"},
+    # Debug exporter dettagliato
+    "blog.exporter": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
     },
 }
