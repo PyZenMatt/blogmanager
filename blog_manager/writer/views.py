@@ -5,8 +5,8 @@ from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 
-from blog_manager.blog.models import Post
-from blog_manager.blog.services.publish import publish_post
+from blog.models import Post
+from blog.services.publish import publish_post
 
 
 class BootstrapLoginView(auth_views.LoginView):

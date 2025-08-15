@@ -46,7 +46,7 @@ urlpatterns = [
     path("", root_redirect),
     path("admin/", admin.site.urls),
     path("api/contact/", include("blog_manager.contact.urls")),
-    path("api/blog/", include("blog_manager.blog.urls")),
+    path("api/blog/", include("blog.urls")),
     # Expose /api/sites/ (list/create) and /api/sites/<id>/ via DRF router
     path("api/", include((router.urls, "api"), namespace="api")),
     path("api/health/", lambda r: JsonResponse({"ok": True}, status=200)),

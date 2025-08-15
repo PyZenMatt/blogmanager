@@ -62,9 +62,9 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # App di progetto (usare il path all'AppConfig per garantire ready() e label corretti)
-    "blog",
-    "contact",
-    "writer",
+        "blog",
+        "contact.apps.ContactConfig",
+        "writer.apps.WriterConfig",
     # Terze parti
     "corsheaders",
     "anymail",
