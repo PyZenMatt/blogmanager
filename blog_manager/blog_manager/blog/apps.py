@@ -1,4 +1,5 @@
 from django.apps import AppConfig
+from . import signals  # noqa: F401
 
 
 class BlogConfig(AppConfig):
@@ -7,5 +8,6 @@ class BlogConfig(AppConfig):
     name = "blog_manager.blog"
 
     def ready(self):
-        # Register signals
+        # importa e registra i segnali
         from . import signals  # noqa: F401
+
