@@ -25,7 +25,7 @@ from .serializers import (
     SiteSerializer,
     TagSerializer,
 )
-from api.filters import SafeOrderingFilter
+from blog_manager.api.filters import SafeOrderingFilter
 
 
 # ENDPOINT API PER UPLOAD IMMAGINI (PostImage)
@@ -77,33 +77,16 @@ class AuthorListView(generics.ListAPIView):
 # POSTS
 class PostListView(generics.ListAPIView):
     serializer_class = PostSerializer
-    filter_backends = [
-        DjangoFilterBackend,
-        filters.SearchFilter,
-        filters.OrderingFilter,
-    ]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, SafeOrderingFilter]
     filterset_fields = ["site", "is_published", "categories__slug"]
     search_fields = ["title", "slug", "content"]
     ordering_fields = ["published_at", "updated_at"]
-    ordering = ["-published_at"]
+    ordering = ["-published_at", "-id"]
     permission_classes = [AllowAny]
 
     def get_queryset(self):
         queryset = Post.objects.all()
         site = self.request.query_params.get("site")
-
-        def perform_create(self, serializer):
-            obj = serializer.save()
-            if obj.status == "published" and not obj.published_at:
-                obj.published_at = timezone.now()
-                obj.save(update_fields=["published_at"])
-
-        def perform_update(self, serializer):
-            prev = self.get_object()
-            obj = serializer.save()
-            if obj.status == "published" and not obj.published_at:
-                obj.published_at = timezone.now()
-                obj.save(update_fields=["published_at"])
         if site:
             queryset = queryset.filter(site__domain=site)
         category = self.request.query_params.get("category")
@@ -182,15 +165,16 @@ class AuthorViewSet(ModelViewSet):
 class PostViewSet(ModelViewSet):
     def get_serializer_class(self):
         if self.action in ("create", "update", "partial_update"):
-            from .serializers import PostWriteSerializer
+            from blog_manager.blog.serializers import PostWriteSerializer
             return PostWriteSerializer
-        from .serializers import PostSerializer
-        return PostSerializer
+        else:
+            from blog_manager.blog.serializers import PostSerializer
+            return PostSerializer
 
     def _unique_slug_for_site(self, *, site_id: int, base_slug: str) -> str:
         slug = base_slug
         i = 2
-        from .models import Post
+        from blog_manager.blog.models import Post
         while Post.objects.filter(site_id=site_id, slug=slug).exists():
             slug = f"{base_slug}-{i}"
             i += 1
@@ -204,7 +188,7 @@ class PostViewSet(ModelViewSet):
         desired_slug = serializer.validated_data.get("slug") or slugify(title)
         auto_slug = (desired_slug == slugify(title))
 
-        from .models import Post
+    from blog_manager.blog.models import Post
         if Post.objects.filter(site_id=site_id, slug=desired_slug).exists():
             if auto_slug:
                 desired_slug = self._unique_slug_for_site(site_id=site_id, base_slug=desired_slug)
@@ -228,7 +212,7 @@ class PostViewSet(ModelViewSet):
         desired_slug = data.get("slug", prev.slug) or slugify(title)
         auto_slug = (desired_slug == slugify(title))
 
-        from .models import Post
+    from blog_manager.blog.models import Post
         conflict = Post.objects.filter(site_id=site_id, slug=desired_slug).exclude(pk=prev.pk).exists()
         if conflict:
             if auto_slug:
@@ -247,7 +231,6 @@ class PostViewSet(ModelViewSet):
     queryset = Post.objects.all()
     serializer_class = PostSerializer
     permission_classes = [IsPublisherForWriteOrReadOnly]
-    from blog_manager.api.filters import SafeOrderingFilter
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
@@ -299,13 +282,13 @@ class PostViewSet(ModelViewSet):
 
         # Se path cambia, gestisci rename
         if old_path and new_path and old_path != new_path:
-            from .exporter import render_markdown
+            from blog_manager.blog.exporter import render_markdown
 
             _ = render_markdown(post, site)
             post.last_export_path = new_path
             post.save(update_fields=["last_export_path"])
         elif new_path:
-            from .exporter import render_markdown
+            from blog_manager.blog.exporter import render_markdown
 
             _ = render_markdown(post, site)
             post.last_export_path = new_path
