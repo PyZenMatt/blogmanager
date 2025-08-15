@@ -1,7 +1,12 @@
 
 import re
 import unicodedata
-from cloudinary_storage.storage import MediaCloudinaryStorage
+try:
+    from cloudinary_storage.storage import MediaCloudinaryStorage
+except Exception:  # pragma: no cover - fallback se lib non disponibile all'import
+    class MediaCloudinaryStorage:  # type: ignore
+        def __init__(self, *a, **kw):
+            pass
 from django.db import models
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
@@ -74,6 +79,9 @@ class Site(models.Model):
     def __str__(self):
         return self.name
 
+    class Meta:
+        ordering = ["id"]
+
 
 class Category(models.Model):
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="categories")
@@ -90,6 +98,7 @@ class Category(models.Model):
         indexes = [
             models.Index(fields=["site", "slug"]),
         ]
+        ordering = ["id"]
 
 
 class Author(models.Model):
@@ -103,6 +112,9 @@ class Author(models.Model):
     def __str__(self):
         return f"{self.name} ({self.site})"
 
+    class Meta:
+        ordering = ["id"]
+
 
 class Post(models.Model):
     meta_title = models.CharField(max_length=70, blank=True)
@@ -111,13 +123,15 @@ class Post(models.Model):
 
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="posts")
     title = models.CharField(max_length=200)
-    slug = models.SlugField()
+    # Deve restare max_length=200 + collation per coerenza con migration 0008
+    slug = models.SlugField(max_length=200, db_collation="utf8mb4_unicode_ci")
     author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True)
     categories = models.ManyToManyField(Category, related_name="posts", blank=True)
     content = models.TextField()  # Markdown o HTML
     published_at = models.DateTimeField(null=True, blank=True)
     is_published = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     LANGUAGE_CHOICES = [
         ("it", "Italiano"),
@@ -131,10 +145,12 @@ class Post(models.Model):
     )
 
     # Editorial workflow fields
+    # Allineato alla migration 0009: niente NULL (evita errori "Column 'exported_hash' cannot be null")
+    # Usiamo default=""; resta indicizzato per lookup rapido
     exported_hash = models.CharField(
         max_length=64,
-        null=True,
         blank=True,
+        default="",
         db_index=True,
         help_text="Hash dell'export (contenuto/front matter) per rilevare cambiamenti lato Jekyll."
     )
@@ -262,6 +278,19 @@ class Post(models.Model):
         else:
             self.slug = self._normalize(self.slug)
             self.slug = dj_slugify(self.slug)[:200].strip("-") or "post"
+        # Normalizza campi di pubblicazione prima della validazione
+        if self.status == "published":
+            # Se manca published_at lo settiamo ora
+            if not self.published_at:
+                self.published_at = timezone.now()
+            # Allineiamo il flag legacy is_published
+            if not self.is_published:
+                self.is_published = True
+        else:
+            # Manteniamo coerenza: se non published lo stato booleano può restare False
+            if self.is_published and self.status != "published":
+                # Evita incoerenze silenziose: lasciamo is_published così com'è solo se user l'ha impostato.
+                pass
         self.full_clean()
         from django.db import transaction
         with transaction.atomic():
@@ -274,6 +303,7 @@ class Post(models.Model):
         indexes = [
             models.Index(fields=["site", "slug"]),
         ]
+        ordering = ["-published_at", "-id"]
 
     def __str__(self):
         return f"{self.title} ({self.site})"
@@ -314,6 +344,9 @@ class Comment(models.Model):
     def __str__(self):
         return f"Comment by {self.author_name} on {self.post}"
 
+    class Meta:
+        ordering = ["id"]
+
 
 # Immagini multiple per post
 class PostImage(models.Model):
@@ -329,6 +362,9 @@ class PostImage(models.Model):
     def __str__(self):
         return f"Immagine per {self.post.title}"
 
+    class Meta:
+        ordering = ["id"]
+
 
 class Tag(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -337,6 +373,9 @@ class Tag(models.Model):
 
     def __str__(self):
         return self.name
+
+    class Meta:
+        ordering = ["slug"]
 
 
 @receiver(pre_save, sender=Post)

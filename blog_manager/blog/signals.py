@@ -1,4 +1,5 @@
 from contextvars import ContextVar
+import logging
 from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -8,6 +9,7 @@ from django.conf import settings
 
 # flag per evitare ricorsioni da salvataggi interni
 _SKIP_EXPORT = ContextVar("skip_export", default=False)
+logger = logging.getLogger("blog.exporter")
 # campi meta che non devono triggerare un nuovo export
 _EXPORT_META_FIELDS = {"last_export_path", "exported_hash", "last_exported_at"}
 
@@ -24,15 +26,20 @@ def _do_export_and_update(post_id: int) -> None:
 
     p = PostModel.objects.select_related("site").get(pk=post_id)
     changed, content_hash, file_path = render_markdown(p, p.site)
+    # Caso: file già identico su disco (changed=False) ma exported_hash non settato => backfill hash
+    if not changed and (getattr(p, "exported_hash", None) != content_hash):
+        update_kwargs = {"exported_hash": content_hash}
+        if file_path:
+            update_kwargs["last_export_path"] = file_path
+        if hasattr(PostModel, "last_exported_at"):
+            update_kwargs["last_exported_at"] = timezone.now()
+        PostModel.objects.filter(pk=p.pk).update(**update_kwargs)
+        return
     if not changed:
         return
-    update_kwargs = {
-        "last_export_path": file_path,
-        "exported_hash": content_hash,
-    }
+    update_kwargs = {"last_export_path": file_path, "exported_hash": content_hash}
     if hasattr(PostModel, "last_exported_at"):
         update_kwargs["last_exported_at"] = timezone.now()
-    # aggiorna i meta senza triggerare altri segnali
     PostModel.objects.filter(pk=p.pk).update(**update_kwargs)
 
 from django.apps import apps
@@ -47,15 +54,20 @@ def trigger_export_on_publish(sender, instance, created, update_fields=None, **k
         return
     # evita loop da salvataggi interni
     if _SKIP_EXPORT.get():
+        logger.debug("[signals] Skip export: _SKIP_EXPORT flag attivo per post id=%s", getattr(instance, 'pk', None))
         return
     # feature flag globale (es. in dev) per disattivare export automatico
     if not getattr(settings, "EXPORT_ENABLED", True):
+        logger.debug("[signals] Export disabilitato da settings.EXPORT_ENABLED=False")
         return
     # se vengono modificati solo i meta, non esportare nuovamente
     if update_fields and set(update_fields).issubset(_EXPORT_META_FIELDS):
+        logger.debug("[signals] Solo meta fields aggiornati (%s) => no export", update_fields)
         return
     # esporta solo se lo stato è published
     if getattr(instance, "status", None) != "published":
+        logger.debug("[signals] Stato non published (status=%s) => no export", getattr(instance, 'status', None))
         return
+    logger.debug("[signals] Pianifico export post id=%s slug=%s", getattr(instance, 'pk', None), getattr(instance, 'slug', None))
     # avvia l’export dopo il commit
     transaction.on_commit(lambda: _do_export_and_update(instance.pk))

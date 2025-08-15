@@ -22,7 +22,14 @@ from rest_framework.routers import DefaultRouter
 
 from django.http import JsonResponse
 
-from blog_manager.blog_manager.blog.views import PostViewSet, SiteViewSet
+"""Root URLconf.
+
+Nota: l'import precedente usava 'blog_manager.blog_manager.blog.views' causando path
+ridondante e potenziali problemi di import in alcuni ambienti. Corretto a
+'blog_manager.blog.views'.
+"""
+
+from blog_manager.blog.views import PostViewSet, SiteViewSet
 
 
 def root_redirect(request):

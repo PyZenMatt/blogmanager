@@ -27,6 +27,7 @@ def compute_canonical_url(post, site):
 import hashlib
 import os
 import subprocess
+import logging
 from datetime import datetime
 from django.conf import settings
 from typing import Optional, Tuple
@@ -39,6 +40,16 @@ except ImportError:
         value = re.sub(r'[^a-z0-9]+', '-', value)
         value = re.sub(r'-+', '-', value)
         return value.strip('-')
+
+def _select_date(post):
+    """Return a datetime for filename/front matter.
+    Preference: published_at, updated_at, created_at; fallback now() if all missing."""
+    for attr in ("published_at", "updated_at", "created_at"):
+        val = getattr(post, attr, None)
+        if val:
+            return val
+    from django.utils import timezone as _tz
+    return _tz.now()
 
 def _front_matter(post, site):
     """
@@ -87,7 +98,7 @@ def _front_matter(post, site):
         "layout": "post",
         "title": post.title or "",
         "slug": post.slug or "",
-        "date": (post.published_at or post.updated_at or post.created_at).strftime("%Y-%m-%d %H:%M:%S"),
+        "date": _select_date(post).strftime("%Y-%m-%d %H:%M:%S"),
         "categories": sorted([c.slug for c in post.categories.all()]) if hasattr(post, "categories") else [],
         # tags può essere un TextField CSV/newline oppure un M2M/Taggit
         "tags": _collect_tags(post),
@@ -118,11 +129,17 @@ def _build_markdown(post, site):
         body = body + "\n"
     return fm + "\n" + body
 
+logger = logging.getLogger("blog.exporter")
+
 def _repo_base(site):
     # repo path per ogni sito: priorità al campo del DB, poi settings
     rp = getattr(site, "repo_path", None) or getattr(settings, "JEKYLL_REPO_BASE", None)
     if not rp:
         raise RuntimeError("Repo path non configurato: setta site.repo_path o settings.JEKYLL_REPO_BASE")
+    if not os.path.isdir(rp):
+        logger.warning("Repo path %s non esiste come directory", rp)
+    elif not os.path.isdir(os.path.join(rp, ".git")):
+        logger.warning("La directory %s non sembra essere un repository git (manca .git)", rp)
     return rp
 
 def _safe_write(filepath, content):
@@ -147,22 +164,53 @@ def _safe_write(filepath, content):
     return True
 def _git_has_changes(repo_path, relpath):
     # Controlla se ci sono modifiche per quel file
-    res = subprocess.run(
-        ["git", "status", "--porcelain", "--", relpath],
-        cwd=repo_path, capture_output=True, text=True
-    )
-    return bool(res.stdout.strip())
+    try:
+        res = subprocess.run(
+            ["git", "status", "--porcelain", "--", relpath],
+            cwd=repo_path, capture_output=True, text=True, check=False
+        )
+        changed = bool(res.stdout.strip())
+        logger.debug("git status per %s => %s", relpath, res.stdout.strip())
+        return changed
+    except Exception as e:
+        logger.exception("Impossibile verificare cambiamenti git per %s: %s", relpath, e)
+        return True  # fallback: prova comunque a committare
 
 def _git_add_commit_push(repo_path, relpath, message):
-    subprocess.run(["git", "add", "--", relpath], cwd=repo_path, check=True)
+    logger.info("[export] Aggiungo file %s e preparo commit", relpath)
+    # git add
+    try:
+        res = subprocess.run(["git", "add", "--", relpath], cwd=repo_path, capture_output=True, text=True)
+        if res.returncode != 0:
+            logger.error("[export][git add] non-zero exit (%s) for %s: stdout=%s stderr=%s", res.returncode, relpath, res.stdout, res.stderr)
+            return False
+        logger.debug("[export][git add] stdout=%s stderr=%s", res.stdout, res.stderr)
+    except Exception as e:
+        logger.exception("git add fallito per %s: %s", relpath, e)
+        return False
     # Commit solo se ci sono modifiche (evita commit vuoti che possono causare loop)
     if _git_has_changes(repo_path, relpath):
-        subprocess.run(["git", "commit", "-m", message], cwd=repo_path, check=True)
+        try:
+            res = subprocess.run(["git", "commit", "-m", message], cwd=repo_path, capture_output=True, text=True)
+            if res.returncode != 0:
+                logger.error("[export][git commit] non-zero exit (%s) for %s: stdout=%s stderr=%s", res.returncode, relpath, res.stdout, res.stderr)
+                return False
+            logger.info("[export] Commit creato: %s", message)
+            logger.debug("[export][git commit] stdout=%s stderr=%s", res.stdout, res.stderr)
+        except Exception as e:
+            logger.exception("Commit fallito per %s: %s", relpath, e)
+            return False
+    else:
+        logger.info("[export] Nessuna modifica da committare per %s", relpath)
     # push best-effort (se configurato)
     try:
-        subprocess.run(["git", "push"], cwd=repo_path, check=True)
-    except Exception:
-        pass
+        res = subprocess.run(["git", "push"], cwd=repo_path, capture_output=True, text=True)
+        if res.returncode != 0:
+            logger.warning("[export][git push] non-zero exit (%s) for repo %s: stdout=%s stderr=%s", res.returncode, repo_path, res.stdout, res.stderr)
+        else:
+            logger.debug("[export] Push eseguito: stdout=%s stderr=%s", res.stdout, res.stderr)
+    except Exception as e:
+        logger.warning("Push non riuscito (ignorato): %s", e)
     return True
 
 def render_markdown(post, site):
@@ -174,27 +222,33 @@ def render_markdown(post, site):
     """
     content = _build_markdown(post, site)
     content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    logger.debug("[export] Calcolato hash %s per post id=%s slug=%s", content_hash[:10], getattr(post, 'id', None), getattr(post, 'slug', None))
 
     # Se l'hash coincide con quello già esportato, short-circuit
     if getattr(post, "exported_hash", None) == content_hash:
-        file_date = (post.published_at or post.updated_at or post.created_at).strftime("%Y-%m-%d")
+        file_date = _select_date(post).strftime("%Y-%m-%d")
         rel_path = f"{getattr(site, 'posts_dir', '_posts')}/{file_date}-{post.slug}.md"
+        logger.info("[export] Nessun cambiamento (hash invariato) per %s", rel_path)
         return (False, content_hash, rel_path)
 
     repo_path = _repo_base(site)
-    file_date = (post.published_at or post.updated_at or post.created_at).strftime("%Y-%m-%d")
+    file_date = _select_date(post).strftime("%Y-%m-%d")
     rel_path = f"{getattr(site, 'posts_dir', '_posts')}/{file_date}-{post.slug}.md"
     abs_path = os.path.join(repo_path, rel_path)
 
     written = _safe_write(abs_path, content)
+    logger.debug("[export] Scrittura %s => written=%s", abs_path, written)
     if not written:
         # identico su disco: aggiorna hash e fine, niente commit
+        logger.info("[export] Contenuto identico su disco, nessun commit per %s", rel_path)
         return (False, content_hash, rel_path)
 
     # Commit condizionale: _git_add_commit_push ora verifica se ci sono cambiamenti
     try:
-        _git_add_commit_push(repo_path, rel_path, f"Export post: {post.slug}")
-    except Exception:
-        # Non bloccare l'export se git fallisce: segnala come non scritto (ma abbiamo scritto su disco)
+        ok = _git_add_commit_push(repo_path, rel_path, f"Export post: {post.slug}")
+        if not ok:
+            logger.warning("[export] git add/commit/push non riuscito per %s", rel_path)
+    except Exception as e:
+        logger.exception("[export] Errore inatteso durante commit/push per %s: %s", rel_path, e)
         return (True, content_hash, rel_path)
     return (True, content_hash, rel_path)

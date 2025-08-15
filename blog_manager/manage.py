@@ -22,7 +22,7 @@ def main() -> None:
     # Default: settings di sviluppo, sovrascrivibile da env
     os.environ.setdefault(
         "DJANGO_SETTINGS_MODULE",
-        os.getenv("DJANGO_SETTINGS_MODULE", "blog_manager.settings.prod"),
+        os.getenv("DJANGO_SETTINGS_MODULE", "settings.dev"),
     )
 
     try:
