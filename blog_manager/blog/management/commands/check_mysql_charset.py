@@ -6,9 +6,11 @@ class Command(BaseCommand):
     help = "Check MySQL connection character set and collation for the default DB"
 
     def handle(self, *args, **options):
-        conn = connections['default']
+        conn = connections["default"]
         with conn.cursor() as cur:
-            cur.execute("SELECT @@character_set_client, @@character_set_connection, @@character_set_database, @@collation_connection, @@collation_database")
+            cur.execute(
+                "SELECT @@character_set_client, @@character_set_connection, @@character_set_database, @@collation_connection, @@collation_database"
+            )
             row = cur.fetchone()
             self.stdout.write("character_set_client: %s" % row[0])
             self.stdout.write("character_set_connection: %s" % row[1])

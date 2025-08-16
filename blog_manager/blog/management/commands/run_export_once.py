@@ -1,5 +1,6 @@
-from django.core.management.base import BaseCommand, CommandError
 from django.apps import apps
+from django.core.management.base import BaseCommand, CommandError
+
 
 class Command(BaseCommand):
     help = "Run render_markdown for a single Post and print result (for debug)."
@@ -9,6 +10,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         from blog.exporter import render_markdown
+
         Post = apps.get_model("blog", "Post")
         post_id = options["post_id"]
         try:

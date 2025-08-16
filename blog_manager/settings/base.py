@@ -3,10 +3,14 @@
 La flag EXPORT_ENABLED ora è controllata via variabile d'ambiente EXPORT_ENABLED
  (default True) per evitare confusione con override hardcoded in dev/prod.
 """
+
 import os
 import sys
 from pathlib import Path
+
 import environ
+
+from core.db import build_database_config
 
 # Setup environ
 env = environ.Env(DEBUG=(bool, False), EXPORT_ENABLED=(bool, True))
@@ -30,18 +34,7 @@ JEKYLL_REPO_BASE = env("JEKYLL_REPO_BASE", default=None)
 DEBUG = env.bool("DEBUG") if "DEBUG" in os.environ else False
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS") if "ALLOWED_HOSTS" in os.environ else []
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.mysql",
-        "NAME": "blogmanager",
-        "USER": "teo",
-        "PASSWORD": "OilPainter@25!",
-        "HOST": "127.0.0.1",
-        "PORT": "3306",
-        "OPTIONS": {
-            "charset": "utf8mb4",
-            "init_command": "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
-        },
-    }
+    "default": build_database_config(env, BASE_DIR, default_engine="mysql"),
 }
 # Optional: during local test runs you can force SQLite to avoid needing MySQL test-db
 if os.getenv("USE_SQLITE_TESTS", "") == "1":
@@ -52,16 +45,6 @@ if os.getenv("USE_SQLITE_TESTS", "") == "1":
             "NAME": str(SQLITE_PATH),
         }
     }
-CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=None) or []
-CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=None) or []
-CLOUDINARY_URL = env("CLOUDINARY_URL", default=None)
-GITHUB_TOKEN = env("GITHUB_TOKEN", default=None)
-EMAIL_HOST = env("EMAIL_HOST", default=None)
-EMAIL_PORT = env.int("EMAIL_PORT", default=None) or 587
-EMAIL_HOST_USER = env("EMAIL_HOST_USER", default=None)
-EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default=None)
-EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=None)
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default=None)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -124,9 +107,7 @@ LOGOUT_REDIRECT_URL = "writer:login"
 WSGI_APPLICATION = "wsgi.application"
 
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
-    },
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -174,14 +155,11 @@ LOGGING = {
     "formatters": {
         "json": {
             "format": (
-                '{"time": "%(asctime)s", "level": "%(levelname)s", "name": "%(name)s", '
-                '"message": %(message)s}'
+                '{"time": "%(asctime)s", "level": "%(levelname)s", "name": "%(name)s", ' '"message": %(message)s}'
             ),
         },
         "simple": {"format": "%(levelname)s %(name)s %(message)s"},
-        "verbose": {
-            "format": "%(asctime)s %(levelname)s [%(name)s] %(module)s:%(lineno)d %(message)s"
-        },
+        "verbose": {"format": "%(asctime)s %(levelname)s [%(name)s] %(module)s:%(lineno)d %(message)s"},
     },
     "handlers": {
         "console": {
@@ -197,11 +175,13 @@ LOGGING = {
     "loggers": {
         "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
         "django.core.mail": {
-            "handlers": ["console"], "level": "DEBUG", "propagate": True,
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": True,
         },
         "django.db.backends": {"level": "WARNING"},
         "core.rest.exceptions": {"level": "INFO"},
-    # Debug exporter dettagliato
-    "blog.exporter": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        # Debug exporter dettagliato
+        "blog.exporter": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
     },
 }

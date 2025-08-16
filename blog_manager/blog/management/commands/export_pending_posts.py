@@ -1,9 +1,12 @@
-from django.core.management.base import BaseCommand
-from blog.models import Post
-from blog.exporter import export_post
 import logging
 
+from django.core.management.base import BaseCommand
+
+from blog.exporter import export_post
+from blog.models import Post
+
 logger = logging.getLogger(__name__)
+
 
 class Command(BaseCommand):
     help = "Riprova export/push per tutti i post pubblicati con export_hash potenzialmente desincronizzato."

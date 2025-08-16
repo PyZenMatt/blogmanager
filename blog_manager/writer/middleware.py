@@ -8,13 +8,7 @@ WINDOW_SEC = 600
 
 
 def client_ip(request):
-    return (
-        request.META.get(
-            "HTTP_X_FORWARDED_FOR", request.META.get("REMOTE_ADDR", "0.0.0.0")
-        )
-        .split(",")[0]
-        .strip()
-    )
+    return request.META.get("HTTP_X_FORWARDED_FOR", request.META.get("REMOTE_ADDR", "0.0.0.0")).split(",")[0].strip()
 
 
 class LoginRateLimitMiddleware:

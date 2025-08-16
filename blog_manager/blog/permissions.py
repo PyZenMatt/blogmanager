@@ -11,10 +11,7 @@ class IsPublisherForWriteOrReadOnly(BasePermission):
         return bool(
             u
             and u.is_authenticated
-            and (
-                getattr(u, "is_staff", False)
-                or u.groups.filter(name__iexact="Publisher").exists()
-            )
+            and (getattr(u, "is_staff", False) or u.groups.filter(name__iexact="Publisher").exists())
         )
 
 

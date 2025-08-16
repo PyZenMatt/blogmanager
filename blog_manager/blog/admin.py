@@ -1,6 +1,7 @@
+import logging
+
 from django.contrib import admin
 from django.utils.html import format_html
-import logging
 
 logger = logging.getLogger(__name__)
 

@@ -15,22 +15,19 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
+from django.conf import settings
 from django.contrib import admin
+from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.urls import include, path
 from django.views.generic import RedirectView
-from django.conf import settings
 from rest_framework.routers import DefaultRouter
-
-from django.http import JsonResponse
 
 from blog.views import PostViewSet, SiteViewSet
 
 
 def root_redirect(request):
-    return redirect(
-        "writer:post_new" if request.user.is_authenticated else "writer:login"
-    )
+    return redirect("writer:post_new" if request.user.is_authenticated else "writer:login")
 
 
 router = DefaultRouter()

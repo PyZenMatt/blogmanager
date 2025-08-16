@@ -5,7 +5,6 @@ from typing import Optional
 
 from django.core.management.base import BaseCommand, CommandError
 
-from blog.utils import render_markdown_for_export
 from blog.models import Site
 from blog.services.github_checks import (
     check_branch,
@@ -14,6 +13,7 @@ from blog.services.github_checks import (
     check_repo_access,
     summarize,
 )
+from blog.utils import render_markdown_for_export
 
 
 class Command(BaseCommand):
@@ -21,9 +21,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--site", dest="site", help="Site id or name (slug)")
-        parser.add_argument(
-            "--all", action="store_true", help="Esegui per tutti i Site"
-        )
+        parser.add_argument("--all", action="store_true", help="Esegui per tutti i Site")
         parser.add_argument("--verbose", action="store_true", help="Output dettagliato")
 
     def handle(self, *args, **options):
@@ -53,9 +51,7 @@ class Command(BaseCommand):
             branch = site.default_branch or "main"
 
             statuses = []
-            token = os.environ.get(
-                "GITHUB_TOKEN", ""
-            )  # token dall'env (può essere vuoto per repo pubblici)
+            token = os.environ.get("GITHUB_TOKEN", "")  # token dall'env (può essere vuoto per repo pubblici)
             # Repo access
             statuses.append(check_repo_access(token, owner, repo))
             # Permissions (assumiamo strategy direct per ora)

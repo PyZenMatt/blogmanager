@@ -32,10 +32,7 @@ class Command(BaseCommand):
             self.stdout.write("No tables found matching blog_%")
             return
 
-        statements = [
-            f"ALTER TABLE `{t}` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-            for t in rows
-        ]
+        statements = [f"ALTER TABLE `{t}` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" for t in rows]
 
         self.stdout.write("Found tables:")
         for t in rows:

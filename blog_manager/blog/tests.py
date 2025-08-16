@@ -19,9 +19,7 @@ def api_client():
 def sample_data():
     site = Site.objects.create(name="MessyMind", domain="https://messymind.it")
     cat = Category.objects.create(site=site, name="Tech", slug="tech")
-    author = Author.objects.create(
-        site=site, name="Mario Rossi", bio="Bio", slug="mario-rossi"
-    )
+    author = Author.objects.create(site=site, name="Mario Rossi", bio="Bio", slug="mario-rossi")
     post = Post.objects.create(
         site=site,
         title="Test Post",

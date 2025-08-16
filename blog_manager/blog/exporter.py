@@ -1,11 +1,12 @@
-import os
 import hashlib
-import subprocess
-import shlex
-from contextlib import suppress
-from django.utils import timezone
-from django.conf import settings
 import logging
+import os
+import shlex
+import subprocess
+from contextlib import suppress
+
+from django.conf import settings
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,11 @@ def _front_matter(post, site):
         "title": getattr(post, "title", "") or "",
         "slug": getattr(post, "slug", "") or "",
         "date": _select_date(post).strftime("%Y-%m-%d %H:%M:%S"),
-        "categories": sorted([c.slug for c in getattr(post, 'categories', []).all()]) if hasattr(getattr(post, 'categories', None), 'all') else [],
+        "categories": (
+            sorted([c.slug for c in getattr(post, "categories", []).all()])
+            if hasattr(getattr(post, "categories", None), "all")
+            else []
+        ),
         "tags": [],
         "canonical": getattr(post, "canonical_url", "") or "",
         "description": getattr(post, "meta_description", "") or "",
@@ -108,7 +113,7 @@ def _build_push_url(remote_https):
     if not token:
         raise RuntimeError("GIT_TOKEN non configurato nell'ambiente.")
     # removeprefix fallback
-    host_and_path = remote_https[len("https://"):] if remote_https.startswith("https://") else remote_https
+    host_and_path = remote_https[len("https://") :] if remote_https.startswith("https://") else remote_https
     return f"https://{GIT_USERNAME}:{token}@{host_and_path}"
 
 
@@ -156,7 +161,11 @@ def export_post(post):
             logger.info("[export] Uso fallback BLOG_REPO_BASE per site=%s: %s", site_slug, candidate)
             repo_dir = candidate
     if (not site) or (not repo_dir) or (not os.path.isdir(repo_dir)):
-        logger.error("[export] repo_dir invalido: site=%s repo_dir=%r (configura Site.repo_path o BLOG_REPO_BASE)", site_slug, repo_dir)
+        logger.error(
+            "[export] repo_dir invalido: site=%s repo_dir=%r (configura Site.repo_path o BLOG_REPO_BASE)",
+            site_slug,
+            repo_dir,
+        )
         return
 
     # 1) Prepara contenuto Markdown e path relativo (es. '_posts/YYYY-MM-DD-slug.md')
@@ -173,7 +182,7 @@ def export_post(post):
         content = post.render_markdown()
     else:
         fm = f"---\ntitle: {getattr(post, 'title', '')}\n---\n"
-        body = getattr(post, 'content', '') or getattr(post, 'body', '') or ''
+        body = getattr(post, "content", "") or getattr(post, "body", "") or ""
         if not body.endswith("\n"):
             body = body + "\n"
         content = fm + "\n" + body
@@ -181,10 +190,18 @@ def export_post(post):
     new_hash = hashlib.md5(content.encode("utf-8")).hexdigest()[:10]
 
     # 2) Decisione scrittura
-    need_write = (getattr(post, "export_hash", None) != new_hash) or (not os.path.exists(abs_path)) or (not _is_tracked(repo_dir, rel_path))
+    need_write = (
+        (getattr(post, "export_hash", None) != new_hash)
+        or (not os.path.exists(abs_path))
+        or (not _is_tracked(repo_dir, rel_path))
+    )
     if need_write:
-        logger.debug("[export] Scrittura necessaria: changed=%s exists=%s tracked=%s",
-                     getattr(post, "export_hash", None) != new_hash, os.path.exists(abs_path), _is_tracked(repo_dir, rel_path))
+        logger.debug(
+            "[export] Scrittura necessaria: changed=%s exists=%s tracked=%s",
+            getattr(post, "export_hash", None) != new_hash,
+            os.path.exists(abs_path),
+            _is_tracked(repo_dir, rel_path),
+        )
         _write_atomic(abs_path, content)
         try:
             _git(repo_dir, "add", rel_path)
@@ -212,24 +229,28 @@ def export_post(post):
             except subprocess.CalledProcessError as e:
                 out = (e.stdout or "").strip()
                 err = (e.stderr or "").strip().replace(GIT_TOKEN or "", MASK)
-                logger.error("[export] Push fallita rc=%s out=%s err=%s", getattr(e, 'returncode', None), out[:500], err[:500])
+                logger.error(
+                    "[export] Push fallita rc=%s out=%s err=%s", getattr(e, "returncode", None), out[:500], err[:500]
+                )
                 return
         else:
             logger.debug("[export] Niente da pushare (HEAD non ahead e WT pulito)")
     except subprocess.CalledProcessError as e:
         out = (e.stdout or "").strip()
         err = (e.stderr or "").strip().replace(GIT_TOKEN or "", MASK)
-        logger.error("[export] Recupero remote fallito rc=%s out=%s err=%s", getattr(e, 'returncode', None), out[:500], err[:500])
+        logger.error(
+            "[export] Recupero remote fallito rc=%s out=%s err=%s", getattr(e, "returncode", None), out[:500], err[:500]
+        )
         return
 
     # 4) Persist export_hash SOLO dopo push OK
     if getattr(post, "export_hash", None) != new_hash:
         try:
             post.export_hash = new_hash
-            if hasattr(post, 'updated_at'):
+            if hasattr(post, "updated_at"):
                 post.updated_at = timezone.now()
-            update_fields = ['export_hash'] + (['updated_at'] if hasattr(post, 'updated_at') else [])
+            update_fields = ["export_hash"] + (["updated_at"] if hasattr(post, "updated_at") else [])
             post.save(update_fields=update_fields)
-            logger.debug("[export] export_hash aggiornato a %s per post id=%s", new_hash, getattr(post, 'id', None))
+            logger.debug("[export] export_hash aggiornato a %s per post id=%s", new_hash, getattr(post, "id", None))
         except Exception:
-            logger.exception("[export] Impossibile aggiornare export_hash per post %s", getattr(post, 'id', None))
+            logger.exception("[export] Impossibile aggiornare export_hash per post %s", getattr(post, "id", None))
