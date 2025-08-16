@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+### Added
+- Switch DB runtime tramite `.env`: supporto **mysql** | **sqlite** con builder centralizzato (`core/db.py`).
+- Guard in `prod.py` per abilitare esplicitamente SQLite in produzione.
+- Test unitari per il builder DB.
+### Changed
+- `.env.example` aggiornato con chiavi DB e fallback SQLite.
+- Ignorati file SQLite in `.gitignore`.
 
 
 ## [0.x.x] - 2025-08-14
