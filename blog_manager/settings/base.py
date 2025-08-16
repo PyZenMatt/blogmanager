@@ -43,6 +43,15 @@ DATABASES = {
         },
     }
 }
+# Optional: during local test runs you can force SQLite to avoid needing MySQL test-db
+if os.getenv("USE_SQLITE_TESTS", "") == "1":
+    SQLITE_PATH = BASE_DIR / "tmp_test_db.sqlite3"
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": str(SQLITE_PATH),
+        }
+    }
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=None) or []
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=None) or []
 CLOUDINARY_URL = env("CLOUDINARY_URL", default=None)

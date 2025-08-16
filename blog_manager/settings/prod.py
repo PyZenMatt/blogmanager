@@ -1,4 +1,7 @@
 from .base import *  # noqa
+from pathlib import Path
+from core.db import build_database_config
+from django.core.exceptions import ImproperlyConfigured
 
 DEBUG = False
 # --- DRF: JSON only in prod, no browsable API ---
@@ -38,26 +41,19 @@ GITHUB_TOKEN = env("GITHUB_TOKEN", default=None)
 
 # EXPORT_ENABLED letto da env in base.py; non sovrascrivere qui.
 # MySQL via env; utf8mb4 + STRICT + conn pooling
+DATA_DIR = BASE_DIR / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# Per sicurezza: SQLite in prod è esplicitamente opt-in
+ALLOW_SQLITE_IN_PROD = env.bool("ALLOW_SQLITE_IN_PROD", default=False)
+DB_ENGINE = env("DB_ENGINE", default="mysql").lower()
+if DB_ENGINE == "sqlite" and not ALLOW_SQLITE_IN_PROD:
+    raise ImproperlyConfigured(
+        "SQLite in produzione è disabilitato di default. Imposta ALLOW_SQLITE_IN_PROD=True per abilitarlo."
+    )
+
+# Config DB centralizzata (mysql|sqlite)
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.mysql",
-        "NAME": env("MYSQL_NAME"),
-        "USER": env("MYSQL_USER"),
-        "PASSWORD": env("MYSQL_PASSWORD"),
-        "HOST": env("MYSQL_HOST"),
-        "PORT": env("MYSQL_PORT"),
-        "OPTIONS": {
-            "charset": "utf8mb4",
-            "use_unicode": True,
-            # Ensure connection uses utf8mb4 and a compatible collation, enable strict mode
-            # SET NAMES forces client/connection character set so emoji won't raise
-            "init_command": (
-                "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci; "
-                "SET sql_mode='STRICT_ALL_TABLES'; "
-                "SET time_zone='+00:00'"
-            ),
-        },
-        "CONN_MAX_AGE": 60,  # keep-alive pooling
-    }
+    "default": build_database_config(env, BASE_DIR, default_engine="mysql"),
 }
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
