@@ -27,6 +27,7 @@ Imposta su PythonAnywhere (Web → Environment Variables):
 - MYSQL_PASSWORD=...
 - MYSQL_HOST=...
 - MYSQL_PORT=3306
+- CONN_MAX_AGE=60
 
 ### 4. Configurazione settings
 In `blog_manager/settings/prod.py`:
@@ -45,7 +46,7 @@ DATABASES = {
             "use_unicode": True,
             "init_command": "SET sql_mode='STRICT_ALL_TABLES', time_zone='+00:00'",
         },
-        "CONN_MAX_AGE": 60,
+        "CONN_MAX_AGE": env.int("CONN_MAX_AGE", default=60),
     }
 }
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -92,6 +93,7 @@ This guide standardizes deployment and rollback operations for the blog_manager 
 | DJANGO_SECRET_KEY    | Django secret key                  | <random-string>              | .env / PA Web config |
 | DJANGO_SETTINGS_MODULE | Django settings module            | blog_manager.settings.prod    | .env / PA Web config |
 | DATABASE_URL         | Database connection string         | sqlite:///db.sqlite3         | .env / PA Web config |
+| CONN_MAX_AGE         | Database connection max age (sec)  | 60                           | .env / PA Web config |
 | CLOUDINARY_URL       | Cloudinary API URL (if used)       | cloudinary://...             | .env / PA Web config |
 | EMAIL_HOST           | SMTP server                        | smtp.gmail.com               | .env / PA Web config |
 | EMAIL_HOST_USER      | SMTP username                      | user@gmail.com               | .env / PA Web config |

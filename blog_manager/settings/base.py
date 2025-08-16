@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 import environ
+from core.db import build_database_config
 
 # Setup environ
 env = environ.Env(DEBUG=(bool, False), EXPORT_ENABLED=(bool, True))
@@ -29,20 +30,7 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default=None)
 JEKYLL_REPO_BASE = env("JEKYLL_REPO_BASE", default=None)
 DEBUG = env.bool("DEBUG") if "DEBUG" in os.environ else False
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS") if "ALLOWED_HOSTS" in os.environ else []
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.mysql",
-        "NAME": "blogmanager",
-        "USER": "teo",
-        "PASSWORD": "OilPainter@25!",
-        "HOST": "127.0.0.1",
-        "PORT": "3306",
-        "OPTIONS": {
-            "charset": "utf8mb4",
-            "init_command": "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
-        },
-    }
-}
+# Database configuration - centralized via core.db module
 # Optional: during local test runs you can force SQLite to avoid needing MySQL test-db
 if os.getenv("USE_SQLITE_TESTS", "") == "1":
     SQLITE_PATH = BASE_DIR / "tmp_test_db.sqlite3"
@@ -51,6 +39,10 @@ if os.getenv("USE_SQLITE_TESTS", "") == "1":
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": str(SQLITE_PATH),
         }
+    }
+else:
+    DATABASES = {
+        "default": build_database_config(env, BASE_DIR, default_engine="sqlite"),
     }
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=None) or []
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=None) or []
