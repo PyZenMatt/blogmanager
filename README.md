@@ -91,7 +91,7 @@ DB_USER=bloguser
 DB_PASSWORD=strongpassword
 DB_HOST=localhost
 DB_PORT=3306
-DB_CONN_MAX_AGE=60
+CONN_MAX_AGE=60
 ```
 
 Assicurati che **server, database e tabelle** siano in **utf8mb4** e collazione `utf8mb4_unicode_ci`.
