@@ -58,7 +58,9 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         if connection.vendor != "mysql":
-            self.stdout.write("Note: Running on non-MySQL database, limited encoding checks available")
+            self.stdout.write(
+                "Note: Running on non-MySQL database, limited encoding checks available"
+            )
 
         apply_fixes = options.get("apply", False)
         target_table = options.get("table")
@@ -85,7 +87,9 @@ class Command(BaseCommand):
                     tables = [row[0] for row in cursor.fetchall()]
                 else:
                     # For SQLite, get table names differently
-                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'blog_%'")
+                    cursor.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'blog_%'"
+                    )
                     tables = [row[0] for row in cursor.fetchall()]
 
         if not tables:
@@ -132,14 +136,19 @@ class Command(BaseCommand):
                 # For SQLite, use PRAGMA to get table info
                 cursor.execute(f"PRAGMA table_info({table_name})")
                 table_info = cursor.fetchall()
-                text_columns = [row[1] for row in table_info if "text" in row[2].lower() or "varchar" in row[2].lower()]
+                text_columns = [
+                    row[1]
+                    for row in table_info
+                    if "text" in row[2].lower() or "varchar" in row[2].lower()
+                ]
                 id_column = "rowid"
 
             if not text_columns:
                 return 0
 
             # Check each row for suspicious content
-            cursor.execute(f"SELECT {id_column}, {', '.join(text_columns)} FROM {table_name}")
+            columns_sql = f"SELECT {id_column}, {', '.join(text_columns)} FROM {table_name}"
+            cursor.execute(columns_sql)
             rows = cursor.fetchall()
 
             for row in rows:
@@ -150,7 +159,8 @@ class Command(BaseCommand):
                     if value and is_suspect(str(value)):
                         issues_count += 1
                         self.stdout.write(
-                            f"  SUSPECT: {table_name}.{column_name} (id={row_id}): " f"'{str(value)[:50]}...'"
+                            f"  SUSPECT: {table_name}.{column_name} (id={row_id}): "
+                            f"'{str(value)[:50]}...'"
                             if len(str(value)) > 50
                             else f"'{value}'"
                         )
