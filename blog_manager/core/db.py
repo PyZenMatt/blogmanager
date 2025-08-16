@@ -16,7 +16,7 @@ def build_database_config(env, base_dir: Path, default_engine: str = "mysql"):
         return {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": str(db_path),
-            "CONN_MAX_AGE": env.int("CONN_MAX_AGE", default=0),
+            "CONN_MAX_AGE": env.int("DB_CONN_MAX_AGE", default=0),
             "OPTIONS": {"timeout": env.int("SQLITE_TIMEOUT", default=20)},
             "ATOMIC_REQUESTS": True,
         }
@@ -29,7 +29,7 @@ def build_database_config(env, base_dir: Path, default_engine: str = "mysql"):
             "PASSWORD": env("DB_PASSWORD", default=""),
             "HOST": env("DB_HOST", default="127.0.0.1"),
             "PORT": env("DB_PORT", default="3306"),
-            "CONN_MAX_AGE": env.int("CONN_MAX_AGE", default=60),
+            "CONN_MAX_AGE": env.int("DB_CONN_MAX_AGE", default=60),
             "OPTIONS": {
                 "charset": "utf8mb4",
                 "init_command": "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
