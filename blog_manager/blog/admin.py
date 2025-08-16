@@ -1,6 +1,8 @@
 from django.contrib import admin, messages
 from django.utils.html import format_html
+from django.db import transaction
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,12 @@ class AuthorAdmin(admin.ModelAdmin):
     list_filter = ("site",)
 
 
+class PostImageInline(admin.TabularInline):
+    model = PostImage
+    extra = 1
+    fields = ("image", "caption")
+
+
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
     list_display = ("id", "title", "slug", "status", "published_at", "site")
@@ -53,47 +61,24 @@ class PostAdmin(admin.ModelAdmin):
     date_hierarchy = "published_at"
     prepopulated_fields = {"slug": ("title",)}
     filter_horizontal = ("categories",)
+    inlines = [PostImageInline]
 
-    fieldsets = (
-        (
-            None,
-            {
-                "fields": (
-                    "site",
-                    "title",
-                    "slug",
-                    "author",
-                    "categories",
-                    "content",
-                    "status",
-                    "published_at",
-                    "is_published",
-                    "reviewed_by",
-                    "reviewed_at",
-                    "review_notes",
-                )
-            },
-        ),
-        (
-            "SEO e Social",
-            {
-                "fields": (
-                    "seo_title",
-                    "background",
-                    "tags",
-                    "description",
-                    "keywords",
-                    "canonical_url",
-                    "og_title",
-                    "og_description",
-                ),
-                "classes": ("collapse",),
-            },
-        ),
-    )
+    def _schedule_export_async(self, post_pk: int):
+        """Lancia l'export in un thread separato (non blocca la response admin)."""
+        def _runner(pk=post_pk):
+            try:
+                from .models import Post
+                from .exporter import export_post
+                p = Post.objects.get(pk=pk)
+                export_post(p)
+            except Exception:
+                logger.exception("Export/push async fallito per Post pk=%s", pk)
 
-    # Trigger export & push quando il post passa a pubblicato da admin
+        t = threading.Thread(target=_runner, daemon=True)
+        t.start()
+
     def save_model(self, request, obj, form, change):
+        # era già pubblicato?
         was_published = False
         if change:
             try:
@@ -104,46 +89,23 @@ class PostAdmin(admin.ModelAdmin):
             except type(obj).DoesNotExist:
                 was_published = False
 
+        # salva subito sul DB (MySQL)
         super().save_model(request, obj, form, change)
 
+        # ora è pubblicato?
         now_published = bool(getattr(obj, "is_published", False)) or (
             getattr(obj, "status", "") == "published"
         )
+
+        # se è appena passato a pubblicato → programma export async DOPO il commit
         if now_published and not was_published:
-            try:
-                from .exporter import export_post
-                export_post(obj)
-                self.message_user(
-                    request,
-                    "Post esportato e push eseguito (se abilitato).",
-                    level=messages.SUCCESS,
-                )
-            except Exception as e:
-                logger.exception("Export/push da admin fallito per Post pk=%s", obj.pk)
-                self.message_user(
-                    request, f"Export/push fallito: {e}", level=messages.ERROR
-                )
-
-    def change_view(self, request, object_id, form_url="", extra_context=None):
-        try:
-            logger.debug(
-                "Admin change_view about to load Post pk=%s user=%s",
-                object_id,
-                getattr(request.user, "username", "?"),
+            pk = obj.pk
+            transaction.on_commit(lambda: self._schedule_export_async(pk))
+            self.message_user(
+                request,
+                "✅ Export programmato: push tra pochi secondi.",
+                level=messages.SUCCESS,
             )
-            return super().change_view(request, object_id, form_url, extra_context)
-        except Exception:
-            logger.exception("Admin change_view FAILED for Post pk=%s", object_id)
-            raise
-
-
-class PostImageInline(admin.TabularInline):
-    model = PostImage
-    extra = 1
-    fields = ("image", "caption")
-
-
-PostAdmin.inlines = [PostImageInline]
 
 
 @admin.register(Comment)
@@ -167,11 +129,11 @@ class PostImageAdmin(admin.ModelAdmin):
             )
         return ""
 
-    image_thumb.short_description = "Anteprima"  # noqa: A003
+    image_thumb.short_description = "Anteprima"  # noqa: A003 - admin attr
 
     def image_url(self, obj):
         if obj.image:
             return obj.image.url
         return ""
 
-    image_url.short_description = "URL Immagine"  # noqa: A003
+    image_url.short_description = "URL Immagine"  # noqa: A003 - admin attr
