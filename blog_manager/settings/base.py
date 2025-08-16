@@ -16,6 +16,13 @@ environ.Env.read_env(os.getenv("ENV_FILE", ".env"))
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+ANYMAIL = {
+    "MAILERSEND_API_TOKEN": env("MAILERSEND_API_TOKEN", default=None),
+}
+
+# Destinatari per le notifiche di contatto
+CONTACT_RECIPIENTS = env.list("CONTACT_RECIPIENTS", default=[])
+
 SECRET_KEY = env("SECRET_KEY")
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=None) or []
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=None) or []
