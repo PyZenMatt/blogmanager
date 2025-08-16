@@ -16,7 +16,6 @@ GIT_TOKEN = os.environ.get("GIT_TOKEN")  # PAT GitHub con repo scope
 
 MASK = "****"
 
-
 # ---- Backwards-compatible helpers expected by blog.services.publish ----
 import re
 
@@ -37,7 +36,6 @@ def _select_date(post):
 
 
 def _front_matter(post, site):
-    # minimal deterministic front matter
     data = {
         "layout": "post",
         "title": getattr(post, "title", "") or "",
@@ -63,7 +61,6 @@ def _front_matter(post, site):
 
 
 def render_markdown(post, site):
-    """Return deterministic markdown content for a post (front matter + body)."""
     fm = _front_matter(post, site)
     body = getattr(post, "content", "") or getattr(post, "body", "") or ""
     if not body.endswith("\n"):
@@ -87,11 +84,10 @@ def compute_canonical_url(post, site):
     if not (base_url and date and slug):
         return None
     base_url = base_url.rstrip("/")
-    return f"{base_url}/{date.year:04d}/{date.month:02d}/{date.day:02d}/{slug}.html"
+    return f"{base_url}/{date.year:04d}/{date.month:02d}/{date.day():02d}/{slug}.html"
 
 
 def _git(cwd, *args, check=True, quiet=False):
-    """Wrapper git con stdout/stderr catturati e logging safe (maschera token)."""
     cmd = ["git", *args]
     env = os.environ.copy()
     display = " ".join(shlex.quote(a) for a in cmd)
@@ -101,13 +97,11 @@ def _git(cwd, *args, check=True, quiet=False):
 
 
 def _build_push_url(remote_https):
-    """Costruisce URL https con credenziali in linea SOLO per la push corrente."""
     if not remote_https.startswith("https://"):
         raise ValueError("Solo remoti HTTPS supportati (niente SSH su PA free).")
     token = os.environ.get("GIT_TOKEN") or GIT_TOKEN
     if not token:
         raise RuntimeError("GIT_TOKEN non configurato nell'ambiente.")
-    # removeprefix fallback
     host_and_path = remote_https[len("https://"):] if remote_https.startswith("https://") else remote_https
     return f"https://{GIT_USERNAME}:{token}@{host_and_path}"
 
@@ -118,7 +112,6 @@ def _is_tracked(cwd, relpath):
 
 
 def _is_ahead(cwd, branch):
-    # Allinea info remoto
     _git(cwd, "fetch", "origin", branch, "--quiet", check=False, quiet=True)
     r = _git(cwd, "rev-list", "--count", f"origin/{branch}..HEAD", check=False, quiet=True)
     try:
@@ -145,7 +138,7 @@ def export_post(post):
     Export robusto:
     - Scrive file se hash cambia OPPURE file manca OPPURE non è tracciato.
     - Se 'no change', ma il repo è ahead di origin, tenta solo push.
-    - Aggiorna export_hash DOPO commit+push riusciti.
+    - Aggiorna metadati (exported_hash, exported_at, last_export_path, last_commit_sha) solo dopo push OK.
     """
     site = getattr(post, "site", None)
     site_slug = getattr(site, "slug", getattr(site, "id", "?")) if site else "?"
@@ -159,14 +152,11 @@ def export_post(post):
         logger.error("[export] repo_dir invalido: site=%s repo_dir=%r (configura Site.repo_path o BLOG_REPO_BASE)", site_slug, repo_dir)
         return
 
-    # 1) Prepara contenuto Markdown e path relativo (es. '_posts/YYYY-MM-DD-slug.md')
-    rel_path = None
+    # 1) Contenuto e percorso relativo (rispetta site.posts_dir)
     if hasattr(post, "render_relative_path"):
         rel_path = post.render_relative_path()
     else:
-        date = getattr(post, "published_at", None) or getattr(post, "updated_at", None) or timezone.now()
-        slug = getattr(post, "slug", None) or "post"
-        rel_path = f"_posts/{date.strftime('%Y-%m-%d')}-{slug}.md"
+        rel_path = build_post_relpath(post, site)
 
     abs_path = os.path.join(repo_dir, rel_path)
     if hasattr(post, "render_markdown"):
@@ -183,8 +173,12 @@ def export_post(post):
     # 2) Decisione scrittura
     need_write = (getattr(post, "export_hash", None) != new_hash) or (not os.path.exists(abs_path)) or (not _is_tracked(repo_dir, rel_path))
     if need_write:
-        logger.debug("[export] Scrittura necessaria: changed=%s exists=%s tracked=%s",
-                     getattr(post, "export_hash", None) != new_hash, os.path.exists(abs_path), _is_tracked(repo_dir, rel_path))
+        logger.debug(
+            "[export] Scrittura necessaria: changed=%s exists=%s tracked=%s",
+            getattr(post, "export_hash", None) != new_hash,
+            os.path.exists(abs_path),
+            _is_tracked(repo_dir, rel_path),
+        )
         _write_atomic(abs_path, content)
         try:
             _git(repo_dir, "add", rel_path)
@@ -222,14 +216,29 @@ def export_post(post):
         logger.error("[export] Recupero remote fallito rc=%s out=%s err=%s", getattr(e, 'returncode', None), out[:500], err[:500])
         return
 
-    # 4) Persist export_hash SOLO dopo push OK
-    if getattr(post, "export_hash", None) != new_hash:
+    # 4) Aggiorna metadati del Post solo dopo push OK (campi CONCRETI)
+    try:
+        changed = []
+        if getattr(post, "exported_hash", "") != new_hash:
+            post.exported_hash = new_hash
+            changed.append("exported_hash")
+        post.exported_at = timezone.now()
+        changed.append("exported_at")
+        post.last_export_path = rel_path
+        changed.append("last_export_path")
+        # commit HEAD
         try:
-            post.export_hash = new_hash
-            if hasattr(post, 'updated_at'):
-                post.updated_at = timezone.now()
-            update_fields = ['export_hash'] + (['updated_at'] if hasattr(post, 'updated_at') else [])
-            post.save(update_fields=update_fields)
-            logger.debug("[export] export_hash aggiornato a %s per post id=%s", new_hash, getattr(post, 'id', None))
+            rc = _git(repo_dir, "rev-parse", "HEAD", check=False, quiet=True)
+            sha = (rc.stdout or "").strip()
+            if sha:
+                post.last_commit_sha = sha
+                changed.append("last_commit_sha")
         except Exception:
-            logger.exception("[export] Impossibile aggiornare export_hash per post %s", getattr(post, 'id', None))
+            pass
+        post.export_status = "success"
+        changed.append("export_status")
+        if changed:
+            post.save(update_fields=changed)
+            logger.debug("[export] Metadati aggiornati (%s) per post id=%s", ",".join(changed), getattr(post, "id", None))
+    except Exception:
+        logger.exception("[export] Impossibile aggiornare metadati per post %s", getattr(post, "id", None))

@@ -1,4 +1,4 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.utils.html import format_html
 import logging
 
@@ -92,7 +92,37 @@ class PostAdmin(admin.ModelAdmin):
         ),
     )
 
-    # Model-level validation is enforced via model.clean() and forms.
+    # Trigger export & push quando il post passa a pubblicato da admin
+    def save_model(self, request, obj, form, change):
+        was_published = False
+        if change:
+            try:
+                old = type(obj).objects.get(pk=obj.pk)
+                was_published = bool(getattr(old, "is_published", False)) or (
+                    getattr(old, "status", "") == "published"
+                )
+            except type(obj).DoesNotExist:
+                was_published = False
+
+        super().save_model(request, obj, form, change)
+
+        now_published = bool(getattr(obj, "is_published", False)) or (
+            getattr(obj, "status", "") == "published"
+        )
+        if now_published and not was_published:
+            try:
+                from .exporter import export_post
+                export_post(obj)
+                self.message_user(
+                    request,
+                    "Post esportato e push eseguito (se abilitato).",
+                    level=messages.SUCCESS,
+                )
+            except Exception as e:
+                logger.exception("Export/push da admin fallito per Post pk=%s", obj.pk)
+                self.message_user(
+                    request, f"Export/push fallito: {e}", level=messages.ERROR
+                )
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
         try:
@@ -107,14 +137,10 @@ class PostAdmin(admin.ModelAdmin):
             raise
 
 
-# Inline dichiarato DOPO la classe PostAdmin
 class PostImageInline(admin.TabularInline):
     model = PostImage
     extra = 1
-    fields = (
-        "image",
-        "caption",
-    )
+    fields = ("image", "caption")
 
 
 PostAdmin.inlines = [PostImageInline]
@@ -141,11 +167,11 @@ class PostImageAdmin(admin.ModelAdmin):
             )
         return ""
 
-    image_thumb.short_description = "Anteprima"  # noqa: A003 - admin attr
+    image_thumb.short_description = "Anteprima"  # noqa: A003
 
     def image_url(self, obj):
         if obj.image:
             return obj.image.url
         return ""
 
-    image_url.short_description = "URL Immagine"  # noqa: A003 - admin attr
+    image_url.short_description = "URL Immagine"  # noqa: A003
