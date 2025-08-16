@@ -156,6 +156,7 @@ REST_FRAMEWORK = {
 
 # Feature flag export (ora dopo aver caricato env)
 EXPORT_ENABLED = env.bool("EXPORT_ENABLED", default=True)
+BLOG_REPO_BASE = env("BLOG_REPO_BASE", default="")
 
 # Logging
 LOGGING = {
