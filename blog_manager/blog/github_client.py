@@ -29,12 +29,8 @@ class GitHubClient:
             res = r.update_file(path, message, content, existing.sha, branch=branch)
         except Exception:
             res = r.create_file(path, message, content, branch=branch)
-        commit = (
-            res["commit"] if isinstance(res, dict) else getattr(res, "commit", None)
-        )
-        content_obj = (
-            res["content"] if isinstance(res, dict) else getattr(res, "content", None)
-        )
+        commit = res["commit"] if isinstance(res, dict) else getattr(res, "commit", None)
+        content_obj = res["content"] if isinstance(res, dict) else getattr(res, "content", None)
         return {
             "commit_sha": getattr(commit, "sha", None),
             "content_sha": getattr(content_obj, "sha", None),

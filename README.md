@@ -9,7 +9,7 @@
 Blog Manager è un backend Django headless per la gestione di blog multi-sito, pensato per servire contenuti a front-end statici Jekyll tramite API RESTful. Ogni sito Jekyll consuma solo i dati di suo interesse, garantendo efficienza e scalabilità.
 
 ## Stack tecnologico
-- **Backend:** Python 3.12, Django 5.x, SQLite (dev), Django REST Framework (opzionale)
+- **Backend:** Python 3.12, Django 5.x, MySQL (prod) / SQLite (dev), Django REST Framework (opzionale)
 - **Frontend:** Jekyll (multi-sito)
 - **Hosting:** PythonAnywhere (free tier) o simili
 - **Dev env:** Windows 11 + WSL2 Ubuntu 24.04, VS Code
@@ -75,6 +75,41 @@ blog_manager/
      ```bash
      python manage.py migrate
      ```
+
+## Configurazione Database
+
+Il progetto supporta configurazione via variabili d'ambiente (12-factor pattern).
+
+### MySQL (Raccomandato per produzione)
+
+Crea un file `.env` (vedi `.env.example`). In **produzione** con MySQL:
+
+```bash
+DB_ENGINE=django.db.backends.mysql
+DB_NAME=blogmanager_db
+DB_USER=bloguser
+DB_PASSWORD=strongpassword
+DB_HOST=localhost
+DB_PORT=3306
+DB_CONN_MAX_AGE=60
+```
+
+Assicurati che **server, database e tabelle** siano in **utf8mb4** e collazione `utf8mb4_unicode_ci`.
+Vedi `instructions/RECOVERY.md` per i comandi di verifica/convert.
+
+> **Nota:** questa baseline **non** abilita export/publish automatico. L'export sarà reintrodotto in una patch separata con feature flag, dopo stabilizzazione DB/emoji.
+
+### Verifica encoding
+
+Usa il comando `check_encoding` per verificare e correggere problemi di codifica:
+
+```bash
+# Verifica (dry-run, default)
+python manage.py check_encoding
+
+# Applica correzioni
+python manage.py check_encoding --apply
+```
 
 6. **Imposta il modulo settings desiderato:**
     - Sviluppo:

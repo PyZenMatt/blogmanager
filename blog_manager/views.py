@@ -1,18 +1,23 @@
-
-from rest_framework.exceptions import APIException
 from http import HTTPStatus
-from django.utils.text import slugify
+
 from django.utils import timezone
+from django.utils.text import slugify
+from rest_framework.exceptions import APIException
+
 
 class Conflict(APIException):
     # Usa HTTPStatus per non dipendere dall'ordine degli import
     status_code = HTTPStatus.CONFLICT
     default_detail = "Conflitto: slug già in uso per questo sito."
+
+
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, generics, decorators, permissions, response, status
+from rest_framework import decorators, filters, generics, permissions, response, status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.viewsets import ModelViewSet
+
+from blog_manager.api.filters import SafeOrderingFilter
 
 from .models import Author, Category, Comment, Post, PostImage, Site, Tag
 from .permissions import IsPublisherForWriteOrReadOnly
@@ -25,7 +30,6 @@ from .serializers import (
     SiteSerializer,
     TagSerializer,
 )
-from blog_manager.api.filters import SafeOrderingFilter
 
 
 # ENDPOINT API PER UPLOAD IMMAGINI (PostImage)
@@ -94,9 +98,7 @@ class PostListView(generics.ListAPIView):
             queryset = queryset.filter(categories__slug=category)
         published = self.request.query_params.get("published")
         if published is not None:
-            queryset = queryset.filter(
-                is_published=published.lower() in ["1", "true", "yes"]
-            )
+            queryset = queryset.filter(is_published=published.lower() in ["1", "true", "yes"])
         return queryset.distinct()
 
 
@@ -175,6 +177,7 @@ class PostViewSet(ModelViewSet):
     def get_serializer_class(self):
         if self.action in ("create", "update", "partial_update"):
             from blog.serializers import PostWriteSerializer
+
             return PostWriteSerializer
         return PostSerializer
 
@@ -223,7 +226,9 @@ class PostViewSet(ModelViewSet):
             obj.published_at = timezone.now()
             obj.save(update_fields=["published_at"])
 
-    @decorators.action(detail=True, methods=["post"], url_path="publish", permission_classes=[permissions.IsAuthenticated])
+    @decorators.action(
+        detail=True, methods=["post"], url_path="publish", permission_classes=[permissions.IsAuthenticated]
+    )
     def publish(self, request, pk=None):
         post = self.get_object()
         if post.status == "published":
@@ -254,6 +259,7 @@ class PostViewSet(ModelViewSet):
         new_path = f"{posts_dir}/{filename}" if filename else None
         if new_path and (not old_path or new_path != old_path):
             from blog.exporter import render_markdown
+
             _ = render_markdown(post, site)
             post.last_export_path = new_path
             post.save(update_fields=["last_export_path"])

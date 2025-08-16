@@ -1,18 +1,23 @@
-
 import re
 import unicodedata
+
 try:
     from cloudinary_storage.storage import MediaCloudinaryStorage
 except Exception:  # pragma: no cover - fallback se lib non disponibile all'import
+
     class MediaCloudinaryStorage:  # type: ignore
         def __init__(self, *a, **kw):
             pass
+
+
+import os
+
 from django.db import models
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
 from django.utils import timezone
-from django.utils.text import slugify as dj_slugify, slugify
-import os
+from django.utils.text import slugify
+from django.utils.text import slugify as dj_slugify
 
 from .utils.seo import extract_plain, meta_defaults, slugify_title
 
@@ -45,21 +50,11 @@ class Site(models.Model):
     )
 
     # Repo mapping fields
-    repo_owner = models.CharField(
-        max_length=100, blank=True, help_text="GitHub owner/org"
-    )
-    repo_name = models.CharField(
-        max_length=100, blank=True, help_text="GitHub repo name"
-    )
-    default_branch = models.CharField(
-        max_length=100, default="main", help_text="Default branch"
-    )
-    posts_dir = models.CharField(
-        max_length=100, default="_posts", help_text="Directory for posts"
-    )
-    media_dir = models.CharField(
-        max_length=100, default="assets/img", help_text="Directory for media"
-    )
+    repo_owner = models.CharField(max_length=100, blank=True, help_text="GitHub owner/org")
+    repo_name = models.CharField(max_length=100, blank=True, help_text="GitHub repo name")
+    default_branch = models.CharField(max_length=100, default="main", help_text="Default branch")
+    posts_dir = models.CharField(max_length=100, default="_posts", help_text="Directory for posts")
+    media_dir = models.CharField(max_length=100, default="assets/img", help_text="Directory for media")
     base_url = models.URLField(blank=True, help_text="Base URL for published site")
 
     MEDIA_STRATEGY_CHOICES = [
@@ -168,7 +163,7 @@ class Post(models.Model):
         blank=True,
         default="",
         db_index=True,
-        help_text="Hash dell'export (contenuto/front matter) per rilevare cambiamenti lato Jekyll."
+        help_text="Hash dell'export (contenuto/front matter) per rilevare cambiamenti lato Jekyll.",
     )
     last_exported_at = models.DateTimeField(null=True, blank=True)
     STATUS_CHOICES = [
@@ -198,13 +193,9 @@ class Post(models.Model):
         ),
         default="https://res.cloudinary.com/dkoc4knvv/image/upload/v1/",
     )
-    tags = models.TextField(
-        blank=True, help_text="Separare i tag con virgola o newline"
-    )
+    tags = models.TextField(blank=True, help_text="Separare i tag con virgola o newline")
     description = models.TextField(blank=True)
-    keywords = models.TextField(
-        blank=True, help_text="Separare le keyword con virgola o newline"
-    )
+    keywords = models.TextField(blank=True, help_text="Separare le keyword con virgola o newline")
     canonical_url = models.URLField(blank=True)
     og_title = models.CharField(max_length=100, blank=True)
     og_description = models.CharField(max_length=200, blank=True)
@@ -252,7 +243,7 @@ class Post(models.Model):
     # Compat alias: exporter usa export_hash ma il campo DB si chiama exported_hash
     @property
     def export_hash(self):  # pragma: no cover - semplice alias
-        return getattr(self, 'exported_hash', '')
+        return getattr(self, "exported_hash", "")
 
     @export_hash.setter
     def export_hash(self, value):  # pragma: no cover
@@ -274,6 +265,7 @@ class Post(models.Model):
                 raise ValidationError({"site": "Site richiesto per pubblicare."})
             repo_path = (site.repo_path or "").strip()
             from django.conf import settings
+
             fallback = None
             if not repo_path and getattr(settings, "BLOG_REPO_BASE", None):
                 fallback = os.path.join(settings.BLOG_REPO_BASE, site.slug)
@@ -331,6 +323,7 @@ class Post(models.Model):
                 pass
         self.full_clean()
         from django.db import transaction
+
         with transaction.atomic():
             super().save(*args, **kwargs)
 
@@ -354,17 +347,13 @@ class ExportJob(models.Model):
         ("pending", "Pending"),
     ]
 
-    post = models.ForeignKey(
-        "Post", on_delete=models.CASCADE, related_name="export_jobs"
-    )
+    post = models.ForeignKey("Post", on_delete=models.CASCADE, related_name="export_jobs")
     exported_at = models.DateTimeField(default=timezone.now)
     commit_sha = models.CharField(max_length=64, blank=True, null=True)
     repo_url = models.URLField(max_length=255, blank=True, null=True)
     branch = models.CharField(max_length=64, blank=True, null=True)
     path = models.CharField(max_length=255, blank=True, null=True)
-    export_status = models.CharField(
-        max_length=16, choices=EXPORT_STATUS_CHOICES, default="pending"
-    )
+    export_status = models.CharField(max_length=16, choices=EXPORT_STATUS_CHOICES, default="pending")
     export_error = models.TextField(blank=True, null=True)
 
     def __str__(self):
@@ -389,9 +378,7 @@ class Comment(models.Model):
 # Immagini multiple per post
 class PostImage(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="images")
-    image = models.ImageField(
-        upload_to=upload_to_post_image, storage=MediaCloudinaryStorage()
-    )
+    image = models.ImageField(upload_to=upload_to_post_image, storage=MediaCloudinaryStorage())
     caption = models.CharField(max_length=200, blank=True)
 
     def save(self, *args, **kwargs):
@@ -437,9 +424,7 @@ def post_autofill(sender, instance, **kwargs):
             tags = []
     # Use meta fields if present, else fallback to seo_title, description, keywords
     meta_title = instance.meta_title or getattr(instance, "seo_title", None)
-    meta_description = instance.meta_description or getattr(
-        instance, "description", None
-    )
+    meta_description = instance.meta_description or getattr(instance, "description", None)
     meta_keywords = instance.meta_keywords or getattr(instance, "keywords", None)
     if not meta_title or not meta_description or not meta_keywords:
         mt, md, mk = meta_defaults(instance.title or "", body_plain, cats, tags)

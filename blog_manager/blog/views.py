@@ -1,18 +1,23 @@
-
-from rest_framework.exceptions import APIException
 from http import HTTPStatus
-from django.utils.text import slugify
+
 from django.utils import timezone
+from django.utils.text import slugify
+from rest_framework.exceptions import APIException
+
 
 class Conflict(APIException):
     # Usa HTTPStatus per non dipendere dall'ordine degli import
     status_code = HTTPStatus.CONFLICT
     default_detail = "Conflitto: slug già in uso per questo sito."
+
+
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, generics, decorators, permissions, response, status
+from rest_framework import decorators, filters, generics, permissions, response, status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.viewsets import ModelViewSet
+
+from api.filters import SafeOrderingFilter
 
 from .models import Author, Category, Comment, Post, PostImage, Site, Tag
 from .permissions import IsPublisherForWriteOrReadOnly
@@ -25,7 +30,6 @@ from .serializers import (
     SiteSerializer,
     TagSerializer,
 )
-from api.filters import SafeOrderingFilter
 
 
 # ENDPOINT API PER UPLOAD IMMAGINI (PostImage)
@@ -104,6 +108,7 @@ class PostListView(generics.ListAPIView):
             if obj.status == "published" and not obj.published_at:
                 obj.published_at = timezone.now()
                 obj.save(update_fields=["published_at"])
+
         if site:
             queryset = queryset.filter(site__domain=site)
         category = self.request.query_params.get("category")
@@ -111,10 +116,9 @@ class PostListView(generics.ListAPIView):
             queryset = queryset.filter(categories__slug=category)
         published = self.request.query_params.get("published")
         if published is not None:
-            queryset = queryset.filter(
-                is_published=published.lower() in ["1", "true", "yes"]
-            )
+            queryset = queryset.filter(is_published=published.lower() in ["1", "true", "yes"])
         return queryset.distinct()
+
 
 class PostDetailView(generics.RetrieveUpdateAPIView):
     queryset = Post.objects.all()
@@ -182,14 +186,17 @@ class PostViewSet(ModelViewSet):
     def get_serializer_class(self):
         if self.action in ("create", "update", "partial_update"):
             from .serializers import PostWriteSerializer
+
             return PostWriteSerializer
         from .serializers import PostSerializer
+
         return PostSerializer
 
     def _unique_slug_for_site(self, *, site_id: int, base_slug: str) -> str:
         slug = base_slug
         i = 2
         from .models import Post
+
         while Post.objects.filter(site_id=site_id, slug=slug).exists():
             slug = f"{base_slug}-{i}"
             i += 1
@@ -201,9 +208,10 @@ class PostViewSet(ModelViewSet):
         site_id = getattr(site_obj_or_id, "id", site_obj_or_id)
         title = serializer.validated_data.get("title") or ""
         desired_slug = serializer.validated_data.get("slug") or slugify(title)
-        auto_slug = (desired_slug == slugify(title))
+        auto_slug = desired_slug == slugify(title)
 
         from .models import Post
+
         if Post.objects.filter(site_id=site_id, slug=desired_slug).exists():
             if auto_slug:
                 desired_slug = self._unique_slug_for_site(site_id=site_id, base_slug=desired_slug)
@@ -225,9 +233,10 @@ class PostViewSet(ModelViewSet):
         site_id = getattr(site_obj_or_id, "id", site_obj_or_id)
         title = data.get("title", prev.title)
         desired_slug = data.get("slug", prev.slug) or slugify(title)
-        auto_slug = (desired_slug == slugify(title))
+        auto_slug = desired_slug == slugify(title)
 
         from .models import Post
+
         conflict = Post.objects.filter(site_id=site_id, slug=desired_slug).exclude(pk=prev.pk).exists()
         if conflict:
             if auto_slug:
@@ -240,6 +249,7 @@ class PostViewSet(ModelViewSet):
         if obj.status == "published" and not obj.published_at:
             obj.published_at = timezone.now()
             obj.save(update_fields=["published_at"])
+
     # Usa l'implementazione base di ModelViewSet.create (nessun override personalizzato!)
     # Usa l'implementazione base di ModelViewSet.create (nessun override)
 
@@ -247,6 +257,7 @@ class PostViewSet(ModelViewSet):
     serializer_class = PostSerializer
     permission_classes = [IsPublisherForWriteOrReadOnly]
     from api.filters import SafeOrderingFilter
+
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
@@ -256,8 +267,10 @@ class PostViewSet(ModelViewSet):
     search_fields = ["title", "slug", "content"]
     ordering_fields = ["published_at", "title", "id"]
     ordering = ["-published_at", "-id"]
-    
-    @decorators.action(detail=True, methods=["post"], url_path="publish", permission_classes=[permissions.IsAuthenticated])
+
+    @decorators.action(
+        detail=True, methods=["post"], url_path="publish", permission_classes=[permissions.IsAuthenticated]
+    )
     def publish(self, request, pk=None):
         post = self.get_object()
         if post.status == "published":
@@ -286,18 +299,15 @@ class PostViewSet(ModelViewSet):
         site = post.site
         new_date = post.published_at
         new_slug = post.slug
-        filename = (
-            f"{new_date.strftime('%Y-%m-%d')}-{new_slug}.md"
-            if new_date and new_slug
-            else None
-        )
+        filename = f"{new_date.strftime('%Y-%m-%d')}-{new_slug}.md" if new_date and new_slug else None
         posts_dir = site.posts_dir if hasattr(site, "posts_dir") else "_posts"
         new_path = f"{posts_dir}/{filename}" if filename else None
 
         # Avvia l’export e l’aggiornamento dei meta dopo il commit
         from django.db import transaction
+
+        from .exporter import render_markdown  # preferito
         from .exporter import render_markown as _rm  # compat se rinominato; correggi se serve
-        from .exporter import render_markdown        # preferito
         from .models import Post as PostModel
 
         def _commit():
@@ -308,6 +318,7 @@ class PostViewSet(ModelViewSet):
                     last_export_path=file_path,
                     exported_hash=content_hash,
                 )
+
         transaction.on_commit(_commit)
 
         # restituisci subito la risposta, evitando il doppio update

@@ -1,10 +1,12 @@
-from contextvars import ContextVar
-from contextlib import suppress
 import logging
+from contextlib import suppress
+from contextvars import ContextVar
+
+from django.conf import settings
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
-from django.conf import settings
+
 ## Do not import models at module level to avoid AppRegistryNotReady
 
 # flag per evitare ricorsioni da salvataggi interni
@@ -13,6 +15,7 @@ logger = logging.getLogger("blog.exporter")
 # campi meta che non devono triggerare un nuovo export
 _EXPORT_META_FIELDS = {"last_export_path", "exported_hash", "last_exported_at"}
 
+
 def _compute_export_path(post) -> str | None:
     if not post.published_at or not post.slug:
         return None
@@ -20,9 +23,10 @@ def _compute_export_path(post) -> str | None:
     filename = f"{post.published_at.strftime('%Y-%m-%d')}-{post.slug}.md"
     return f"{posts_dir}/{filename}"
 
+
 def _do_export_and_update(post_id: int) -> None:
-    from .models import Post as PostModel
     from .exporter import render_markdown
+    from .models import Post as PostModel
 
     p = PostModel.objects.select_related("site").get(pk=post_id)
     changed, content_hash, file_path = render_markdown(p, p.site)
@@ -42,6 +46,7 @@ def _do_export_and_update(post_id: int) -> None:
         update_kwargs["last_exported_at"] = timezone.now()
     PostModel.objects.filter(pk=p.pk).update(**update_kwargs)
 
+
 from django.apps import apps
 
 
@@ -54,7 +59,7 @@ def trigger_export_on_publish(sender, instance, created, update_fields=None, **k
         return
     # evita loop da salvataggi interni
     if _SKIP_EXPORT.get():
-        logger.debug("[signals] Skip export: _SKIP_EXPORT flag attivo per post id=%s", getattr(instance, 'pk', None))
+        logger.debug("[signals] Skip export: _SKIP_EXPORT flag attivo per post id=%s", getattr(instance, "pk", None))
         return
     # feature flag globale (es. in dev) per disattivare export automatico
     if not getattr(settings, "EXPORT_ENABLED", True):
@@ -66,10 +71,13 @@ def trigger_export_on_publish(sender, instance, created, update_fields=None, **k
         return
     # esporta solo se lo stato è published
     if getattr(instance, "status", None) != "published":
-        logger.debug("[signals] Stato non published (status=%s) => no export", getattr(instance, 'status', None))
+        logger.debug("[signals] Stato non published (status=%s) => no export", getattr(instance, "status", None))
         return
-    logger.debug("[signals] Pianifico export post id=%s slug=%s", getattr(instance, 'pk', None), getattr(instance, 'slug', None))
+    logger.debug(
+        "[signals] Pianifico export post id=%s slug=%s", getattr(instance, "pk", None), getattr(instance, "slug", None)
+    )
     # Chiamata sincrona: se spinge fallisce, non rompe il salvataggio del post.
     with suppress(Exception):
         from .exporter import export_post
+
         export_post(instance)

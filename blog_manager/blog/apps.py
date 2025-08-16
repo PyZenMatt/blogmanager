@@ -9,4 +9,3 @@ class BlogConfig(AppConfig):
     def ready(self):  # pragma: no cover - side effects di registrazione segnali
         # Import lazy dei signals (evita import anticipato durante il discover)
         from . import signals  # noqa: F401
-

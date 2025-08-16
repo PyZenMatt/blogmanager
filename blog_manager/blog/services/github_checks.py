@@ -79,8 +79,7 @@ def check_pages_workflow(token: str, owner: str, repo: str) -> dict:
             iterable = [items]
         for item in iterable:
             if getattr(item, "type", "file") == "file" and (
-                str(getattr(item, "name", "")).endswith(".yml")
-                or str(getattr(item, "name", "")).endswith(".yaml")
+                str(getattr(item, "name", "")).endswith(".yml") or str(getattr(item, "name", "")).endswith(".yaml")
             ):
                 names.append(str(getattr(item, "name", "")))
                 # Try to detect pages keywords
@@ -88,9 +87,7 @@ def check_pages_workflow(token: str, owner: str, repo: str) -> dict:
                     file_obj: Any = r.get_contents(getattr(item, "path", item))
                     content_b64 = getattr(file_obj, "content", None)
                     if content_b64:
-                        decoded = base64.b64decode(content_b64).decode(
-                            "utf-8", errors="ignore"
-                        )
+                        decoded = base64.b64decode(content_b64).decode("utf-8", errors="ignore")
                         if (
                             "deploy-pages" in decoded
                             or "github-pages" in decoded
@@ -111,8 +108,5 @@ def check_pages_workflow(token: str, owner: str, repo: str) -> dict:
 
 def summarize(statuses: List[dict]) -> Tuple[bool, str]:
     ok = all(s.get("ok") for s in statuses)
-    lines = [
-        ("✅" if s.get("ok") else "❌") + f" {s.get('name')}: {s.get('details', '')}"
-        for s in statuses
-    ]
+    lines = [("✅" if s.get("ok") else "❌") + f" {s.get('name')}: {s.get('details', '')}" for s in statuses]
     return ok, "\n".join(lines)

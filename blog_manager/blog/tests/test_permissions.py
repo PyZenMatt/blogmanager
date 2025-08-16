@@ -57,9 +57,7 @@ def test_publisher_can_publish(api_client):
         keywords="test",
     )
     publisher = create_user_with_group("publisher1", "Publisher")
-    print(
-        "Publisher user groups:", list(publisher.groups.values_list("name", flat=True))
-    )
+    print("Publisher user groups:", list(publisher.groups.values_list("name", flat=True)))
     api_client.force_authenticate(user=publisher)
     url = reverse("post-detail", kwargs={"pk": post.pk})
     from django.utils import timezone

@@ -1,5 +1,6 @@
 import hashlib
-from typing import Dict, Any
+from typing import Any, Dict
+
 
 def build_jekyll_front_matter(post) -> Dict[str, Any]:
     # Minimale (espandere secondo il vostro schema)
@@ -11,6 +12,7 @@ def build_jekyll_front_matter(post) -> Dict[str, Any]:
         "tags": getattr(post, "tags", []) or [],
         "status": getattr(post, "status", "draft"),
     }
+
 
 def render_markdown_for_export(post) -> str:
     fm = build_jekyll_front_matter(post)
@@ -25,12 +27,13 @@ def render_markdown_for_export(post) -> str:
         else:
             lines.append(f"{k}: {v}")
     lines.append("---")
-        # Compat: preferisci post.body; fallback a content_markdown se presente
-        body_value = getattr(post, "body", None)
-        if body_value is None:
-            body_value = getattr(post, "content_markdown", "")  # per retro-compat
-        body = (body_value or "").rstrip() + "\n"
+    # Compat: preferisci post.body; fallback a content_markdown se presente
+    body_value = getattr(post, "body", None)
+    if body_value is None:
+        body_value = getattr(post, "content_markdown", "")  # per retro-compat
+    body = (body_value or "").rstrip() + "\n"
     return "\n".join(lines) + "\n\n" + body
+
 
 def content_hash(post) -> str:
     data = render_markdown_for_export(post).encode("utf-8")

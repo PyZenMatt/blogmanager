@@ -1,5 +1,7 @@
 from pathlib import Path
+
 from django.core.exceptions import ImproperlyConfigured
+
 
 def build_database_config(env, base_dir: Path, default_engine: str = "mysql"):
     """
@@ -22,15 +24,15 @@ def build_database_config(env, base_dir: Path, default_engine: str = "mysql"):
     if engine == "mysql":
         return {
             "ENGINE": "django.db.backends.mysql",
-            "NAME": env("DB_NAME"),
-            "USER": env("DB_USER"),
-            "PASSWORD": env("DB_PASSWORD"),
+            "NAME": env("DB_NAME", default="blogmanager"),
+            "USER": env("DB_USER", default="root"),
+            "PASSWORD": env("DB_PASSWORD", default=""),
             "HOST": env("DB_HOST", default="127.0.0.1"),
             "PORT": env("DB_PORT", default="3306"),
             "CONN_MAX_AGE": env.int("DB_CONN_MAX_AGE", default=60),
             "OPTIONS": {
                 "charset": "utf8mb4",
-                "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
+                "init_command": "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
             },
             "ATOMIC_REQUESTS": True,
         }

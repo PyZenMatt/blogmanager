@@ -1,6 +1,8 @@
-from django.core.management.base import BaseCommand, CommandError
 from django.apps import apps
+from django.core.management.base import BaseCommand, CommandError
+
 from blog.exporter import render_markdown
+
 
 class Command(BaseCommand):
     help = "Esegue export diagnostico per un Post e mostra info (hash, path, changed)."

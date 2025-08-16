@@ -37,10 +37,7 @@ def open_read_and_control_write(monkeypatch):
                 return bool(
                     u
                     and u.is_authenticated
-                    and (
-                        getattr(u, "is_staff", False)
-                        or u.groups.filter(name__iexact="Publisher").exists()
-                    )
+                    and (getattr(u, "is_staff", False) or u.groups.filter(name__iexact="Publisher").exists())
                 )
 
         WritePerm = WritePerm

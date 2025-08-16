@@ -1,8 +1,9 @@
-from django.core.management.base import BaseCommand, CommandError
-from django.contrib import admin
-from django.test import RequestFactory
-from django.contrib.auth import get_user_model
 from django.apps import apps
+from django.contrib import admin
+from django.contrib.auth import get_user_model
+from django.core.management.base import BaseCommand, CommandError
+from django.test import RequestFactory
+
 
 class Command(BaseCommand):
     help = "Esegue la change_view admin per un <app_label.ModelName> e <pk> e stampa eventuale traceback."

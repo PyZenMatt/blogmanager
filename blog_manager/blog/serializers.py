@@ -1,7 +1,8 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from .models import Post, Site, Author
+from .models import Author, Post, Site
+
 
 class PostWriteSerializer(serializers.ModelSerializer):
     body = serializers.CharField(write_only=True, required=False, allow_blank=True)
@@ -42,6 +43,7 @@ class PostWriteSerializer(serializers.ModelSerializer):
             candidate = slug
             idx = 2
             from .models import Post
+
             while Post.objects.filter(site=site, slug=candidate).exists():
                 candidate = f"{slug}-{idx}"
                 idx += 1
@@ -66,12 +68,18 @@ class PostWriteSerializer(serializers.ModelSerializer):
             site = validated_data.get("site", getattr(instance, "site", None))
             new_slug = validated_data.get("slug", None)
             if new_slug is not None:
-                base_slug = self.slugify(new_slug) if new_slug else self.slugify(validated_data.get("title") or instance.title or "")
+                base_slug = (
+                    self.slugify(new_slug)
+                    if new_slug
+                    else self.slugify(validated_data.get("title") or instance.title or "")
+                )
                 if site:
                     validated_data["slug"] = self._unique_slug_for_site(site, base_slug)
                 else:
                     validated_data["slug"] = base_slug or instance.slug
             return super().update(instance, validated_data)
+
+
 from .models import Category, Comment, Post, PostImage, Tag
 
 
@@ -103,9 +111,7 @@ class CategorySerializer(serializers.ModelSerializer):
             if self.instance:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
-                raise serializers.ValidationError(
-                    {"slug": "Slug must be unique per site."}
-                )
+                raise serializers.ValidationError({"slug": "Slug must be unique per site."})
         return attrs
 
     meta_title = serializers.CharField(required=False, allow_blank=True)
@@ -133,7 +139,10 @@ class CommentSerializer(serializers.ModelSerializer):
 
 class PostSerializer(serializers.ModelSerializer):
     body = serializers.CharField(source="content", required=True)
-    categories = serializers.PrimaryKeyRelatedField(many=True, queryset=Category.objects.all(), required=False, allow_empty=True)
+    categories = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Category.objects.all(), required=False, allow_empty=True
+    )
+
     class Meta:
         model = Post
         fields = [
@@ -187,6 +196,7 @@ class PostSerializer(serializers.ModelSerializer):
     def validate_slug(self, value):
         import re
         import unicodedata
+
         v = value
         v = re.sub(r"[\x00\uD800-\uDFFF]", "", v or "")
         try:
@@ -194,6 +204,7 @@ class PostSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         from django.utils.text import slugify as dj_slugify
+
         v = dj_slugify(v)[:200].strip("-") or "post"
         site = None
         if hasattr(self, "initial_data") and isinstance(self.initial_data, dict):
@@ -208,6 +219,7 @@ class PostSerializer(serializers.ModelSerializer):
         if qs.exists():
             raise serializers.ValidationError("Slug must be unique per site.")
         return v
+
     def create(self, validated_data):
         # Autogenerazione server-side se slug mancante
         if not validated_data.get("slug"):
@@ -219,9 +231,7 @@ class PostSerializer(serializers.ModelSerializer):
 
     site = serializers.PrimaryKeyRelatedField(queryset=Site.objects.all())
     author = serializers.PrimaryKeyRelatedField(queryset=Author.objects.all())
-    categories = serializers.PrimaryKeyRelatedField(
-        queryset=Category.objects.all(), many=True
-    )
+    categories = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all(), many=True)
     body = serializers.CharField(source="content", required=True)
     # For GET, still provide nested serializers
     comments = CommentSerializer(many=True, read_only=True)

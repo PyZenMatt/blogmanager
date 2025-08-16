@@ -31,15 +31,9 @@ def _validate_site(post: Post):
     return site
 
 
-def publish_post(
-    post: Post | int, *, token: Optional[str] = None, message: Optional[str] = None
-) -> PublishResult:
+def publish_post(post: Post | int, *, token: Optional[str] = None, message: Optional[str] = None) -> PublishResult:
     if isinstance(post, int):
-        post = (
-            Post.objects.select_related("site")
-            .prefetch_related("categories", "tags")
-            .get(pk=post)
-        )
+        post = Post.objects.select_related("site").prefetch_related("categories", "tags").get(pk=post)
     if post.status != "published" or not post.published_at:
         raise ValueError("Post must be published and have published_at set")
 
