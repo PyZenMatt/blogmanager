@@ -1,0 +1,54 @@
+name: "Recovery: Restore repository to known-good commit"
+description: Ripristina il repo a un commit stabile precedente (pre-loop), con branch dedicato e PR.
+title: "recovery: restore to known-good @ [LAST_GOOD_SHA]"
+labels: ["recovery", "bug", "P0"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Recovery Workflow
+        Questa issue guida il recupero del repository a un commit stabile precedente,
+        applicando eventuali cherry-pick necessari, e aprendo una PR verso `main`.
+  - type: input
+    id: last_good_sha
+    attributes:
+      label: LAST_GOOD_SHA
+      description: SHA del commit stabile prima del loop (7-40 chars)
+      placeholder: e.g. 97ab3c1
+    validations:
+      required: true
+  - type: input
+    id: first_bad_time
+    attributes:
+      label: Timestamp inizio problemi (approx)
+      description: ISO 8601 (Europe/Rome). Es. 2025-08-15T23:45:00+02:00
+    validations:
+      required: true
+  - type: textarea
+    id: must_keep_commits
+    attributes:
+      label: Commit da mantenere (cherry-pick)
+      description: SHA (uno per riga) di fix sicuri da riportare sopra il known-good (facoltativo)
+      placeholder: |
+        1a2b3c4  # fix CI
+        d5e6f7a  # docs hotfix
+  - type: checkboxes
+    id: repos
+    attributes:
+      label: Repos da recuperare
+      options:
+        - label: blogmanager (backend)
+        - label: jekyll-site (contenuti)
+  - type: textarea
+    id: notes
+    attributes:
+      label: Note / rischi
+      description: Vincoli, dipendenze, migrazioni da evitare, ecc.
+  - type: markdown
+    attributes:
+      value: |
+        ### Definition of Done
+        - Branch `recovery/<YYYYMMDD><shortsha>` creato da `LAST_GOOD_SHA`
+        - Cherry-pick applicati (se presenti) e test verdi (cov ≥85%)
+        - PR aperta verso `main` con checklist DoD, Runbook e piano rollback
+        - Smoke test export → **NO loop**, push deterministico
