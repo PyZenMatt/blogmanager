@@ -150,13 +150,63 @@ def export_post(post):
     site = getattr(post, "site", None)
     site_slug = getattr(site, "slug", getattr(site, "id", "?")) if site else "?"
     repo_dir = getattr(site, "repo_path", None) if site else None
-    if (not repo_dir) and site and getattr(settings, "BLOG_REPO_BASE", None):
-        candidate = os.path.join(settings.BLOG_REPO_BASE, site_slug)
-        if os.path.isdir(candidate):
-            logger.info("[export] Uso fallback BLOG_REPO_BASE per site=%s: %s", site_slug, candidate)
-            repo_dir = candidate
+    # Candidate paths for fallback when Site.repo_path is empty.
+    candidate_paths = []
+    if site and getattr(settings, "BLOG_REPO_BASE", None):
+        # two common conventions: <base>/<owner>/<repo> and <base>/<slug>
+        # prefer owner/repo when repo_owner and repo_name are provided
+        owner = getattr(site, "repo_owner", "") or ""
+        name = getattr(site, "repo_name", "") or ""
+        if owner and name:
+            candidate_paths.append(os.path.join(settings.BLOG_REPO_BASE, owner, name))
+        # always add fallback using site.slug
+        candidate_paths.append(os.path.join(settings.BLOG_REPO_BASE, site_slug))
+        # Log candidates for diagnostics
+        logger.debug("[export] candidate repo paths for site=%s: %s", site_slug, candidate_paths)
+        for candidate in candidate_paths:
+            if os.path.isdir(candidate):
+                logger.info("[export] Uso fallback BLOG_REPO_BASE per site=%s: %s", site_slug, candidate)
+                repo_dir = candidate
+                break
+        # If in DEBUG + EXPORT_ENABLED, allow creating the first candidate if none exists
+        try:
+            export_enabled = getattr(settings, "EXPORT_ENABLED", True)
+        except Exception:
+            export_enabled = True
+        if getattr(settings, "DEBUG", False) and export_enabled and (not repo_dir) and candidate_paths:
+            # choose first candidate as the intended working copy path
+            repo_dir = candidate_paths[0]
+            try:
+                logger.info("[export] DEBUG auto-create fallback repo_dir for site=%s: %s", site_slug, repo_dir)
+                os.makedirs(repo_dir, exist_ok=True)
+            except Exception:
+                logger.exception("[export] Impossibile creare fallback repo_dir %s", repo_dir)
+
+    # In development, optionally auto-create the repo_dir and posts dir when EXPORT_ENABLED
+    try:
+        export_enabled = getattr(settings, "EXPORT_ENABLED", True)
+    except Exception:
+        export_enabled = True
+    if getattr(settings, "DEBUG", False) and export_enabled and site and repo_dir:
+        # ensure repo_dir exists
+        try:
+            if not os.path.isdir(repo_dir):
+                logger.debug("[export] DEBUG auto-create repo_dir: %s", repo_dir)
+                os.makedirs(repo_dir, exist_ok=True)
+        except Exception:
+            logger.exception("[export] Impossibile creare repo_dir %s", repo_dir)
+        # ensure posts directory exists inside repo
+        posts_dir = (getattr(site, "posts_dir", None) or "_posts").strip("/")
+        posts_path = os.path.join(repo_dir, posts_dir)
+        try:
+            if not os.path.isdir(posts_path):
+                logger.debug("[export] DEBUG auto-create posts_dir: %s", posts_path)
+                os.makedirs(posts_path, exist_ok=True)
+        except Exception:
+            logger.exception("[export] Impossibile creare posts_dir %s", posts_path)
     if (not site) or (not repo_dir) or (not os.path.isdir(repo_dir)):
-        logger.error("[export] repo_dir invalido: site=%s repo_dir=%r (configura Site.repo_path o BLOG_REPO_BASE)", site_slug, repo_dir)
+        logger.error("[export] repo_dir invalido: site=%s repo_dir=%r (configura Site.repo_path o BLOG_REPO_BASE). Candidates=%s",
+                     site_slug, repo_dir, candidate_paths if 'candidate_paths' in locals() else None)
         return
 
     # 1) Prepara contenuto Markdown e path relativo (es. '_posts/YYYY-MM-DD-slug.md')

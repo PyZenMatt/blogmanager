@@ -140,7 +140,7 @@ class Post(models.Model):
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="posts")
     title = models.CharField(max_length=200)
     # Deve restare max_length=200 + collation per coerenza con migration 0008
-    slug = models.SlugField(max_length=200, db_collation="utf8mb4_unicode_ci")
+    slug = models.SlugField(max_length=200)
     author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True)
     categories = models.ManyToManyField(Category, related_name="posts", blank=True)
     content = models.TextField()  # Markdown o HTML
@@ -280,7 +280,7 @@ class Post(models.Model):
             if repo_path and not os.path.isdir(repo_path):
                 raise ValidationError({"site": f"repo_path inesistente: {repo_path}"})
             if (not repo_path) and fallback and not os.path.isdir(fallback):
-                raise ValidationError({"site": "Configura repo_path o crea directory fallback BLOG_REPO_BASE/<slug>."})
+                raise ValidationError({"site": f"Configura repo_path o crea directory fallback {fallback}."})
 
     # imports now at top-level
 
