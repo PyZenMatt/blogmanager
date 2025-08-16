@@ -11,7 +11,8 @@ from django.db import models
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
 from django.utils import timezone
-from django.utils.text import slugify as dj_slugify
+from django.utils.text import slugify as dj_slugify, slugify
+import os
 
 from .utils.seo import extract_plain, meta_defaults, slugify_title
 
@@ -35,6 +36,13 @@ def upload_to_post_image(instance, filename):
 class Site(models.Model):
     name = models.CharField(max_length=100)
     domain = models.URLField(unique=True)
+    slug = models.SlugField(unique=True, blank=True)
+    repo_path = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Percorso working copy locale del repo Jekyll (se vuoto usa BLOG_REPO_BASE/<slug> se esiste)",
+    )
 
     # Repo mapping fields
     repo_owner = models.CharField(
@@ -70,11 +78,19 @@ class Site(models.Model):
 
         if not self.default_branch:
             raise ValidationError("default_branch cannot be empty.")
-        # Normalize paths
         if self.posts_dir:
             self.posts_dir = self.posts_dir.strip().strip("/")
         if self.media_dir:
             self.media_dir = self.media_dir.strip().strip("/")
+        if self.repo_path:
+            self.repo_path = self.repo_path.strip()
+        if not self.slug:
+            self.slug = slugify(self.name) or slugify(self.domain) or "site"
+
+    def save(self, *a, **kw):
+        if not self.slug:
+            self.slug = slugify(self.name) or slugify(self.domain) or "site"
+        super().save(*a, **kw)
 
     def __str__(self):
         return self.name
@@ -233,16 +249,38 @@ class Post(models.Model):
         help_text="Timestamp dell'ultima esportazione",
     )
 
+    # Compat alias: exporter usa export_hash ma il campo DB si chiama exported_hash
+    @property
+    def export_hash(self):  # pragma: no cover - semplice alias
+        return getattr(self, 'exported_hash', '')
+
+    @export_hash.setter
+    def export_hash(self, value):  # pragma: no cover
+        self.exported_hash = value
+
     def clean(self):
         from django.core.exceptions import ValidationError
 
-        # Only staff can publish
         if self.status == "published" and (not self.published_at):
             raise ValidationError("published_at is required when status is published.")
         if self.status == "published" and not self.is_published:
             raise ValidationError("is_published must be True when status is published.")
         if self.status == "review" and not self.reviewed_by:
             raise ValidationError("reviewed_by is required when status is review.")
+        # Export safety: require working copy present (direct or fallback) when published
+        if self.status == "published":
+            site = getattr(self, "site", None)
+            if not site:
+                raise ValidationError({"site": "Site richiesto per pubblicare."})
+            repo_path = (site.repo_path or "").strip()
+            from django.conf import settings
+            fallback = None
+            if not repo_path and getattr(settings, "BLOG_REPO_BASE", None):
+                fallback = os.path.join(settings.BLOG_REPO_BASE, site.slug)
+            if repo_path and not os.path.isdir(repo_path):
+                raise ValidationError({"site": f"repo_path inesistente: {repo_path}"})
+            if (not repo_path) and fallback and not os.path.isdir(fallback):
+                raise ValidationError({"site": "Configura repo_path o crea directory fallback BLOG_REPO_BASE/<slug>."})
 
     # imports now at top-level
 

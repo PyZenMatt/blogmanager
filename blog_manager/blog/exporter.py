@@ -4,6 +4,7 @@ import subprocess
 import shlex
 from contextlib import suppress
 from django.utils import timezone
+from django.conf import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -147,9 +148,15 @@ def export_post(post):
     - Aggiorna export_hash DOPO commit+push riusciti.
     """
     site = getattr(post, "site", None)
+    site_slug = getattr(site, "slug", getattr(site, "id", "?")) if site else "?"
     repo_dir = getattr(site, "repo_path", None) if site else None
-    if not repo_dir or not os.path.isdir(repo_dir):
-        logger.error("[export] repo_dir invalido per site=%s: %r", getattr(site, "slug", "?"), repo_dir)
+    if (not repo_dir) and site and getattr(settings, "BLOG_REPO_BASE", None):
+        candidate = os.path.join(settings.BLOG_REPO_BASE, site_slug)
+        if os.path.isdir(candidate):
+            logger.info("[export] Uso fallback BLOG_REPO_BASE per site=%s: %s", site_slug, candidate)
+            repo_dir = candidate
+    if (not site) or (not repo_dir) or (not os.path.isdir(repo_dir)):
+        logger.error("[export] repo_dir invalido: site=%s repo_dir=%r (configura Site.repo_path o BLOG_REPO_BASE)", site_slug, repo_dir)
         return
 
     # 1) Prepara contenuto Markdown e path relativo (es. '_posts/YYYY-MM-DD-slug.md')

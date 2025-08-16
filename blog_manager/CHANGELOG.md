@@ -23,3 +23,4 @@
 
 ### Fixed
 - Export su GitHub resilient: scrittura se file mancante/non tracciato, push anche in assenza di modifiche se `HEAD` è ahead di `origin`. Aggiornamento `export_hash` solo dopo push OK. Nuovo comando `export_pending_posts`.
+- Export validation: aggiunti `Site.slug` / `Site.repo_path`, fallback `BLOG_REPO_BASE/<slug>`, comando `check_export_repos`, redirect favicon.

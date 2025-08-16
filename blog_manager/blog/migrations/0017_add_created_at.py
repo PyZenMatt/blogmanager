@@ -7,10 +7,5 @@ class Migration(migrations.Migration):
         ("blog", "0001_initial"),
     ]
 
-    operations = [
-        migrations.AddField(
-            model_name="post",
-            name="created_at",
-            field=models.DateTimeField(auto_now_add=True, null=True),
-        ),
-    ]
+    # No-op: campo created_at già presente in 0001_initial. Migrazione mantenuta per coerenza timeline.
+    operations = []

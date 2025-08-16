@@ -10,11 +10,5 @@ class Migration(migrations.Migration):
         ("blog", "0017_add_created_at"),
     ]
 
-    operations = [
-        migrations.AlterField(
-            model_name="post",
-            name="created_at",
-            field=models.DateTimeField(auto_now_add=True, default=django.utils.timezone.now),
-            preserve_default=False,
-        ),
-    ]
+    # No-op: campo già corretto in 0001_initial.
+    operations = []

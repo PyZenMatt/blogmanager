@@ -18,6 +18,8 @@ Including another URLconf
 from django.contrib import admin
 from django.shortcuts import redirect
 from django.urls import include, path
+from django.views.generic import RedirectView
+from django.conf import settings
 from rest_framework.routers import DefaultRouter
 
 from django.http import JsonResponse
@@ -44,4 +46,5 @@ urlpatterns = [
     path("api/", include((router.urls, "api"), namespace="api")),
     path("api/health/", lambda r: JsonResponse({"ok": True}, status=200)),
     path("writer/", include("writer.urls", namespace="writer")),
+    path("favicon.ico", RedirectView.as_view(url=settings.STATIC_URL + "favicon.ico", permanent=False)),
 ]
