@@ -57,3 +57,32 @@ DATABASES = {
     "default": build_database_config(env, BASE_DIR, default_engine="mysql"),
 }
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --- CORS/CSRF (produzione) ---
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[
+    "pyzenmatt.pythonanywhere.com",
+    "messymind.it", "www.messymind.it",
+    "matteoricci.net", "www.matteoricci.net",
+])
+
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[
+    "https://messymind.it",
+    "https://www.messymind.it",
+    "https://matteoricci.net",
+    "https://www.matteoricci.net",
+])
+
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[
+    "https://messymind.it",
+    "https://www.messymind.it",
+    "https://matteoricci.net",
+    "https://www.matteoricci.net",
+])
+
+# Metti True solo se usi cookie/sessioni cross-site (fetch con credentials)
+CORS_ALLOW_CREDENTIALS = env.bool("CORS_ALLOW_CREDENTIALS", default=False)
+if CORS_ALLOW_CREDENTIALS:
+    SESSION_COOKIE_SAMESITE = "None"
+    CSRF_COOKIE_SAMESITE = "None"
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
