@@ -108,21 +108,15 @@ class CategorySerializer(serializers.ModelSerializer):
                 )
         return attrs
 
-    meta_title = serializers.CharField(required=False, allow_blank=True)
-    meta_description = serializers.CharField(required=False, allow_blank=True)
-
     class Meta:
         model = Category
-        fields = ["id", "site", "name", "slug", "meta_title", "meta_description"]
+        fields = ["id", "site", "name", "slug"]
 
 
 class AuthorSerializer(serializers.ModelSerializer):
-    meta_title = serializers.CharField(required=False, allow_blank=True)
-    meta_description = serializers.CharField(required=False, allow_blank=True)
-
     class Meta:
         model = Author
-        fields = ["id", "site", "name", "bio", "slug", "meta_title", "meta_description"]
+        fields = ["id", "site", "name", "bio", "slug"]
 
 
 class CommentSerializer(serializers.ModelSerializer):
@@ -151,15 +145,9 @@ class PostSerializer(serializers.ModelSerializer):
             "images",
             "comments",
             "cover_image_url",
-            "meta_title",
-            "meta_description",
-            "meta_keywords",
             "canonical_url",
             "repo_path",
-            "og_title",
-            "og_description",
-            "og_image_url",
-            "noindex",
+            # SEO/meta fields removed — front matter is derived from content only
             "status",
             "reviewed_by",
             "reviewed_at",
@@ -226,15 +214,10 @@ class PostSerializer(serializers.ModelSerializer):
     # For GET, still provide nested serializers
     comments = CommentSerializer(many=True, read_only=True)
     images = PostImageSerializer(many=True, read_only=True)
-    meta_title = serializers.CharField(required=False, allow_blank=True)
-    meta_description = serializers.CharField(required=False, allow_blank=True)
-    meta_keywords = serializers.CharField(required=False, allow_blank=True)
+    # meta/seo fields removed
     canonical_url = serializers.URLField(required=False, allow_blank=True)
     repo_path = serializers.SerializerMethodField(read_only=True)
-    og_title = serializers.CharField(required=False, allow_blank=True)
-    og_description = serializers.CharField(required=False, allow_blank=True)
-    og_image_url = serializers.URLField(required=False, allow_blank=True)
-    noindex = serializers.BooleanField(required=False)
+    # og_* and noindex removed
     status = serializers.CharField(required=False)
     reviewed_by = serializers.PrimaryKeyRelatedField(
         queryset=get_user_model().objects.all(),

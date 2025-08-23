@@ -71,7 +71,8 @@ class PostImageInline(admin.TabularInline):
 class PostAdmin(admin.ModelAdmin):
     list_display = ("id", "title", "slug", "status", "published_at", "site")
     list_filter = ("status", "site", "published_at", "categories", "tags")
-    search_fields = ("title", "slug", "body", "meta_title", "meta_description")
+    # Removed SEO/meta fields from search as they are no longer model fields
+    search_fields = ("title", "slug", "body")
     autocomplete_fields = ("author", "categories")
     date_hierarchy = "published_at"
     prepopulated_fields = {"slug": ("title",)}
