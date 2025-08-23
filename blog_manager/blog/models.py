@@ -14,7 +14,7 @@ from django.utils import timezone
 from django.utils.text import slugify as dj_slugify, slugify
 import os
 
-from .utils.seo import extract_plain, meta_defaults, slugify_title
+from .utils.seo import slugify_title
 
 
 def upload_to_post_image(instance, filename):
@@ -160,10 +160,6 @@ class Author(models.Model):
 
 
 class Post(models.Model):
-    meta_title = models.CharField(max_length=70, blank=True)
-    meta_description = models.CharField(max_length=180, blank=True)
-    meta_keywords = models.CharField(max_length=255, blank=True)
-
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="posts")
     title = models.CharField(max_length=200)
     # Deve restare max_length=200 + collation per coerenza con migration 0008
@@ -215,7 +211,6 @@ class Post(models.Model):
     review_notes = models.TextField(blank=True)
 
     # Campi aggiuntivi per front matter ricco
-    seo_title = models.CharField(max_length=200, blank=True)
     background = models.CharField(
         max_length=200,
         blank=True,
@@ -233,10 +228,7 @@ class Post(models.Model):
         blank=True, help_text="Separare le keyword con virgola o newline"
     )
     canonical_url = models.URLField(blank=True)
-    og_title = models.CharField(max_length=100, blank=True)
-    og_description = models.CharField(max_length=200, blank=True)
-    og_image_url = models.URLField(blank=True)
-    noindex = models.BooleanField(default=False)
+    # OpenGraph / noindex fields removed — content-based markdown only now
     # Osservabilità export/build
     export_status = models.CharField(
         max_length=16,
@@ -445,39 +437,6 @@ class Tag(models.Model):
 
 @receiver(pre_save, sender=Post)
 def post_autofill(sender, instance, **kwargs):
+    # Mantieni solo logica minima: genera slug se mancante.
     if not instance.slug and instance.title:
         instance.slug = slugify_title(instance.title)
-    body_plain = extract_plain(instance.content or "")
-    cats = [c.name for c in instance.categories.all()] if instance.pk else []
-    # Gestione robusta dei tag: supporta sia Taggit che stringa CSV
-    if not instance.pk:
-        tags = []
-    else:
-        t = getattr(instance, "tags", None)
-        if t is None:
-            tags = []
-        elif hasattr(t, "all"):
-            tags = [x.name for x in t.all()]
-        elif isinstance(t, str):
-            tags = [s.strip() for s in t.split(",") if s.strip()]
-        else:
-            tags = []
-    # Use meta fields if present, else fallback to seo_title, description, keywords
-    meta_title = instance.meta_title or getattr(instance, "seo_title", None)
-    meta_description = instance.meta_description or getattr(
-        instance, "description", None
-    )
-    meta_keywords = instance.meta_keywords or getattr(instance, "keywords", None)
-    if not meta_title or not meta_description or not meta_keywords:
-        mt, md, mk = meta_defaults(instance.title or "", body_plain, cats, tags)
-        instance.meta_title = meta_title or mt
-        instance.meta_description = meta_description or md
-        instance.meta_keywords = meta_keywords or mk
-    else:
-        instance.meta_title = meta_title
-        instance.meta_description = meta_description
-        instance.meta_keywords = meta_keywords
-    if not instance.og_title:
-        instance.og_title = instance.meta_title or instance.title or ""
-    if not instance.og_description:
-        instance.og_description = instance.meta_description or ""

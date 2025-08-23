@@ -30,9 +30,8 @@ def test_author_cannot_publish(api_client):
         author=author_obj,
         content="Test",
         is_published=False,
-        seo_title="SEO Title",
-        description="Test Description",
-        keywords="test",
+    description="Test Description",
+    keywords="test",
     )
     author = create_user_with_group("author1", "Author")
     api_client.force_authenticate(user=author)
@@ -52,9 +51,8 @@ def test_publisher_can_publish(api_client):
         author=author_obj,
         content="Test",
         is_published=False,
-        seo_title="SEO Title",
-        description="Test Description",
-        keywords="test",
+    description="Test Description",
+    keywords="test",
     )
     publisher = create_user_with_group("publisher1", "Publisher")
     print(

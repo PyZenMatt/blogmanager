@@ -6,6 +6,8 @@ from contextlib import suppress
 from django.utils import timezone
 from django.conf import settings
 import logging
+import shutil
+import pwd
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,8 @@ def _front_matter(post, site):
         "categories": sorted([c.slug for c in getattr(post, 'categories', []).all()]) if hasattr(getattr(post, 'categories', None), 'all') else [],
         "tags": [],
         "canonical": getattr(post, "canonical_url", "") or "",
-        "description": getattr(post, "meta_description", "") or "",
+    # description is derived from post.content/description field if present
+    "description": getattr(post, "description", "") or "",
     }
     lines = ["---"]
     for k in sorted(data.keys()):
@@ -143,6 +146,28 @@ def export_post(post):
     site = getattr(post, "site", None)
     site_slug = getattr(site, "slug", getattr(site, "id", "?")) if site else "?"
     repo_dir = getattr(site, "repo_path", None) if site else None
+    # DEBUG: dump environment useful to diagnose prod vs console differences
+    try:
+        git_path = shutil.which("git")
+    except Exception:
+        git_path = None
+    try:
+        repo_exists = bool(repo_dir and os.path.isdir(repo_dir))
+    except Exception:
+        repo_exists = False
+    owner = None
+    perms = None
+    try:
+        if repo_exists:
+            st = os.stat(repo_dir)
+            owner = pwd.getpwuid(st.st_uid).pw_name
+            perms = oct(st.st_mode & 0o777)
+    except Exception:
+        owner = None
+        perms = None
+    token_present = bool(os.environ.get("GIT_TOKEN"))
+    logger.debug("[export][diag] site=%s repo_path=%r repo_exists=%s owner=%s perms=%s BLOG_REPO_BASE=%r git=%r GIT_TOKEN=%s",
+                 site_slug, repo_dir, repo_exists, owner, perms, getattr(settings, "BLOG_REPO_BASE", None), git_path, "****" if token_present else "<missing>")
     if (not repo_dir) and site and getattr(settings, "BLOG_REPO_BASE", None):
         candidate = os.path.join(settings.BLOG_REPO_BASE, site_slug)
         if os.path.isdir(candidate):
@@ -198,16 +223,52 @@ def export_post(post):
     # 3) Push se necessario
     try:
         remote = _git(repo_dir, "remote", "get-url", "origin", check=True).stdout.strip()
-        push_url = _build_push_url(remote)
+        try:
+            push_url = _build_push_url(remote)
+        except ValueError:
+            # remote is not HTTPS (eg. SSH). Try to push using the configured remote name
+            logger.warning("[export] remote non-HTTPS rilevato, useremo il remote configurato 'origin' (richiede chiavi SSH o credential helper)")
+            push_url = None
+
         if _is_ahead(repo_dir, GIT_BRANCH) or not _working_tree_clean(repo_dir):
             logger.info("[export] Push verso origin/%s", GIT_BRANCH)
+            # prepare push attempt function
+            def _attempt_push(target):
+                try:
+                    if target:
+                        return _git(repo_dir, "push", target, f"HEAD:{GIT_BRANCH}")
+                    else:
+                        return _git(repo_dir, "push", "origin", f"HEAD:{GIT_BRANCH}")
+                except subprocess.CalledProcessError as e:
+                    raise
+
+            # first try
             try:
-                _git(repo_dir, "push", push_url, f"HEAD:{GIT_BRANCH}")
+                _attempt_push(push_url)
             except subprocess.CalledProcessError as e:
                 out = (e.stdout or "").strip()
                 err = (e.stderr or "").strip().replace(GIT_TOKEN or "", MASK)
-                logger.error("[export] Push fallita rc=%s out=%s err=%s", getattr(e, 'returncode', None), out[:500], err[:500])
-                return
+                # if rejected because remote is ahead, try fast-forward merge then retry once
+                if "non-fast-forward" in err or "failed to push some refs" in err or "Updates were rejected" in err:
+                    logger.warning("[export] Push respinta per non-fast-forward; provo fetch+ff-only e ritento push")
+                    try:
+                        # fetch and try fast-forward merge
+                        _git(repo_dir, "fetch", "origin", GIT_BRANCH)
+                        _git(repo_dir, "merge", "--ff-only", f"origin/{GIT_BRANCH}")
+                        # retry push
+                        try:
+                            _attempt_push(push_url)
+                        except subprocess.CalledProcessError as e2:
+                            out2 = (e2.stdout or "").strip()
+                            err2 = (e2.stderr or "").strip().replace(GIT_TOKEN or "", MASK)
+                            logger.error("[export] Retry push fallita rc=%s out=%s err=%s", getattr(e2, 'returncode', None), out2[:500], err2[:500])
+                            return
+                    except subprocess.CalledProcessError:
+                        logger.error("[export] Impossibile fast-forward da origin/%s; abort export per evitare conflitti manuali", GIT_BRANCH)
+                        return
+                else:
+                    logger.error("[export] Push fallita rc=%s out=%s err=%s", getattr(e, 'returncode', None), out[:500], err[:500])
+                    return
         else:
             logger.debug("[export] Niente da pushare (HEAD non ahead e WT pulito)")
     except subprocess.CalledProcessError as e:
