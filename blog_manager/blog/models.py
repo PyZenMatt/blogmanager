@@ -90,6 +90,33 @@ class Site(models.Model):
     def save(self, *a, **kw):
         if not self.slug:
             self.slug = slugify(self.name) or slugify(self.domain) or "site"
+        if not self.slug:
+            base = slugify(self.name) or slugify(self.domain) or f"site{getattr(self,'pk','') or ''}"
+            self.slug = base
+
+        # If repo_path not set, attempt to use BLOG_REPO_BASE/<slug> as fallback.
+        # If the directory exists we set repo_path. In development (DEBUG=True)
+        # we will create the directory automatically so local workflow is smooth.
+        try:
+            from django.conf import settings
+
+            if not (self.repo_path and str(self.repo_path).strip()):
+                blog_base = getattr(settings, "BLOG_REPO_BASE", None)
+                if blog_base:
+                    candidate = os.path.join(blog_base, self.slug)
+                    if os.path.isdir(candidate):
+                        self.repo_path = candidate
+                    elif getattr(settings, "DEBUG", False):
+                        try:
+                            os.makedirs(candidate, exist_ok=True)
+                            self.repo_path = candidate
+                        except Exception:
+                            # best-effort only in dev; ignore failures
+                            pass
+        except Exception:
+            # if settings not available or any error, continue without setting repo_path
+            pass
+
         super().save(*a, **kw)
 
     def __str__(self):

@@ -1,5 +1,7 @@
 from django.contrib import admin, messages
 from django.utils.html import format_html
+import os
+from django.conf import settings
 from django.db import transaction
 import logging
 import threading
@@ -12,6 +14,7 @@ from .models import Author, Category, Comment, Post, PostImage, Site
 @admin.register(Site)
 class SiteAdmin(admin.ModelAdmin):
     list_display = ("id", "name")
+    readonly_fields = ("repo_candidate",)
     search_fields = ("name",)
     fieldsets = (
         (None, {"fields": ("name", "domain")}),
@@ -21,6 +24,7 @@ class SiteAdmin(admin.ModelAdmin):
                 "fields": (
                     "repo_owner",
                     "repo_name",
+                    "repo_candidate",
                     "default_branch",
                     "posts_dir",
                     "media_dir",
@@ -30,6 +34,17 @@ class SiteAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+    def repo_candidate(self, obj: Site) -> str:
+        """Return the full candidate repo path shown in admin (either repo_path or BLOG_REPO_BASE/<slug>)."""
+        if obj.repo_path and str(obj.repo_path).strip():
+            return str(obj.repo_path)
+        base = getattr(settings, "BLOG_REPO_BASE", None)
+        if base:
+            return os.path.join(base, obj.slug or "")
+        return ""
+
+    repo_candidate.short_description = "Percorso repo candidato"
 
 
 @admin.register(Category)
