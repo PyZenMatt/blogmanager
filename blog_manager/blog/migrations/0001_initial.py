@@ -78,7 +78,7 @@ class Migration(migrations.Migration):
                 ("meta_description", models.CharField(blank=True, max_length=180)),
                 ("meta_keywords", models.CharField(blank=True, max_length=255)),
                 ("title", models.CharField(max_length=200)),
-                ("slug", models.SlugField(db_collation="utf8mb4_unicode_ci", max_length=200)),
+                ("slug", models.SlugField(max_length=200)),
                 ("content", models.TextField()),
                 ("published_at", models.DateTimeField(blank=True, null=True)),
                 ("is_published", models.BooleanField(default=False)),

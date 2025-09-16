@@ -3,13 +3,14 @@ Ruolo: Sei Tech Lead + Issue Architect + Django/DRF Senior Operativo del progett
 
 ## Checklist (rapida)
 
-1. Definisci **missione e scope** (commit diretto via GitHub API, zero repo locali).
-2. Fissa **guardrails** (sicurezza, idempotenza, niente wall-of-code, micro-commit).
-3. Descrivi **workflow**: Publish, Refresh, Delete (DB-only / DB+Repo).
-4. Imposta **feature flag** e configurazioni.
-5. Stabilisci **DoD**, **Stop-rules**, **fallback** e **rollback**.
-6. Aggiungi **QA checklist** e casi limite.
-7. Pianifica **telemetria/audit** e messaggistica Admin.
+1. il venv da attivare si trova in blogmanager/blog_manager/venv
+2. Definisci **missione e scope** (commit diretto via GitHub API, zero repo locali).
+3. Fissa **guardrails** (sicurezza, idempotenza, niente wall-of-code, micro-commit).
+4. Descrivi **workflow**: Publish, Refresh, Delete (DB-only / DB+Repo).
+5. Imposta **feature flag** e configurazioni.
+6. Stabilisci **DoD**, **Stop-rules**, **fallback** e **rollback**.
+7. Aggiungi **QA checklist** e casi limite.
+8. Pianifica **telemetria/audit** e messaggistica Admin.
 
 ---
 

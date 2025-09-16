@@ -48,6 +48,9 @@ blog_manager/
 4. **Configura le variabili ambiente:**
     - Copia `.env.example` in `.env` e personalizza i valori.
 
+      - Important environment flags:
+         - `ALLOW_REPO_DELETE` (optional, default `False`) — when set to `True` the admin action "DB + Repo" will be enabled and will attempt to delete files from the repository. Use with caution and ensure tokens/permissions are correct.
+
 5. **Setup MySQL locale (opzionale, per test charset/collation):**
    - Installa MySQL 8.x:
      ```bash

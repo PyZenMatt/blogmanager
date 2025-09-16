@@ -178,6 +178,8 @@ REST_FRAMEWORK = {
 # Feature flag export (ora dopo aver caricato env)
 EXPORT_ENABLED = env.bool("EXPORT_ENABLED", default=True)
 BLOG_REPO_BASE = env("BLOG_REPO_BASE", default="")
+# Allow dangerous repo deletes from admin UI. Default False for safety.
+ALLOW_REPO_DELETE = env.bool("ALLOW_REPO_DELETE", default=False)
 
 # Logging
 LOGGING = {

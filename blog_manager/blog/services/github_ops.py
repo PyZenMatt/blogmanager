@@ -9,13 +9,19 @@ def delete_post_from_repo(post, *, message: str, client: Optional[GitHubClient] 
     Expects `post` to have attributes: `repo_owner`, `repo_name`, `repo_path`, `repo_branch`.
     """
     client = client or GitHubClient()
-    if not getattr(post, "repo_path", None):
+    # repo_path usually stored on the Post; if missing, try site.repo_path
+    path = getattr(post, "repo_path", None)
+    if not path:
+        site = getattr(post, "site", None)
+        path = getattr(site, "posts_dir", None)
+    if not path:
         return {"status": "no_repo_path"}
 
-    owner = getattr(post, "repo_owner")
-    repo = getattr(post, "repo_name")
-    path = getattr(post, "repo_path")
-    branch = getattr(post, "repo_branch", "main")
+    # owner/repo/branch may be on the Post or on the related Site
+    site = getattr(post, "site", None)
+    owner = getattr(post, "repo_owner", None) or (getattr(site, "repo_owner", None) if site else None)
+    repo = getattr(post, "repo_name", None) or (getattr(site, "repo_name", None) if site else None)
+    branch = getattr(post, "repo_branch", None) or (getattr(site, "default_branch", None) if site else "main")
 
     res = client.delete_file(owner, repo, path, branch=branch, message=message)
 
@@ -24,7 +30,7 @@ def delete_post_from_repo(post, *, message: str, client: Optional[GitHubClient] 
         from blog.models import ExportJob
 
         ExportJob.objects.create(
-            post=getattr(post, "pk", None) and post or None,
+            post=post,
             commit_sha=res.get("commit_sha"),
             repo_url=None,
             branch=branch,

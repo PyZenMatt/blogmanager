@@ -1,0 +1,20 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+  <h1>{% trans "Confirm Delete Posts" %}</h1>
+  <p>{% trans "The following posts will be affected:" %}</p>
+  <ul>
+  {% for p in posts %}
+    <li>{{ p.title }} (id={{ p.pk }}) - site: {{ p.site.name }}</li>
+  {% endfor %}
+  </ul>
+  <form method="post">{% csrf_token %}
+    {{ form.as_p }}
+    {% if not allow_repo %}
+      <p><em>{% trans "Repo deletion is not allowed by settings." %}</em></p>
+    {% endif %}
+    <input type="submit" value="Confirm" class="default" />
+    <a href="../">Cancel</a>
+  </form>
+{% endblock %}

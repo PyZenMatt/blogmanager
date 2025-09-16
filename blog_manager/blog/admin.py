@@ -9,6 +9,11 @@ import threading
 logger = logging.getLogger(__name__)
 
 from .models import Author, Category, Comment, Post, PostImage, Site
+from django import forms
+from django.shortcuts import render, redirect
+from django.urls import path
+from django.utils.safestring import mark_safe
+from .services.github_ops import delete_post_from_repo
 
 
 @admin.register(Site)
@@ -78,6 +83,69 @@ class PostAdmin(admin.ModelAdmin):
     prepopulated_fields = {"slug": ("title",)}
     filter_horizontal = ("categories",)
     inlines = [PostImageInline]
+    actions = ["admin_delete_posts"]
+
+    class DeleteConfirmationForm(forms.Form):
+        MODE_CHOICES = [("db", "DB-only (default)"), ("repo", "DB + Repo")]
+        mode = forms.ChoiceField(choices=MODE_CHOICES, widget=forms.RadioSelect, initial="db")
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path("delete_selected_confirm/", self.admin_site.admin_view(self.delete_selected_confirm), name="blog_post_delete_confirm"),
+        ]
+        return custom + urls
+
+    def admin_delete_posts(self, request, queryset):
+        # Redirect to confirmation view with selected pks
+        pks = ",".join(str(p.pk) for p in queryset)
+        return redirect(f"./delete_selected_confirm/?pks={pks}")
+
+    admin_delete_posts.short_description = "Delete selected posts (DB-only or DB+Repo)"
+
+    def delete_selected_confirm(self, request):
+        pks = request.GET.get("pks", "")
+        ids = [int(x) for x in pks.split(",") if x]
+        posts = Post.objects.filter(pk__in=ids).select_related("site")
+
+        allow_repo = getattr(settings, "ALLOW_REPO_DELETE", False)
+
+        if request.method == "POST":
+            form = self.DeleteConfirmationForm(request.POST)
+            if form.is_valid():
+                mode = form.cleaned_data["mode"]
+                results = []
+                for p in posts:
+                    if mode == "repo" and allow_repo:
+                        try:
+                            res = delete_post_from_repo(p, message=f"admin: delete post #{p.pk}")
+                            results.append((p.pk, "repo", res.get("status"), res.get("commit_sha"), res.get("html_url")))
+                        except Exception as e:
+                            results.append((p.pk, "repo", "error", str(e), None))
+                    # Only delete DB after successful repo delete (if requested)
+                    if mode == "db" or (mode == "repo" and allow_repo):
+                        # If repo requested but delete failed, skip DB delete
+                        if mode == "repo" and allow_repo:
+                            last = results[-1]
+                            if last[2] == "error":
+                                continue
+                        p.delete()
+                        results.append((p.pk, "db", "deleted", None, None))
+
+                # Build a simple summary message
+                for r in results:
+                    if r[2] == "deleted":
+                        self.message_user(request, mark_safe(f"Post {r[0]} deleted from DB."), level=messages.SUCCESS)
+                    elif r[2] in ("deleted", "already_absent"):
+                        self.message_user(request, f"Post {r[0]} repo status: {r[2]}", level=messages.INFO)
+                    else:
+                        self.message_user(request, f"Post {r[0]} error: {r[2]}", level=messages.ERROR)
+
+                return redirect("../")
+        else:
+            form = self.DeleteConfirmationForm()
+
+        return render(request, "admin/blog/post/delete_confirm.html", {"posts": posts, "form": form, "allow_repo": allow_repo})
 
     def _schedule_export_async(self, post_pk: int):
         """Lancia l'export in un thread separato (non blocca la response admin)."""

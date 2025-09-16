@@ -262,6 +262,13 @@ class Post(models.Model):
         null=True,
         help_text="SHA dell'ultimo commit di pubblicazione",
     )
+    last_published_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Hash dell'ultimo contenuto pubblicato (front-matter + body)",
+    )
     exported_at = models.DateTimeField(
         blank=True,
         null=True,
