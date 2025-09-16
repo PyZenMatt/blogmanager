@@ -37,7 +37,7 @@
 ### Added
 
 - Idempotent publish support: added `Post.last_published_hash` to record the hash of the last published content (front-matter + body). Migration `0022_add_last_published_hash.py` and index migration `0023_add_index_last_published_hash.py` included.
-- `publish_post` now computes content hash and skips GitHub upsert when no changes are detected; an `ExportJob` is created with `export_error="no_changes"` in that case.
+- `publish_post` now computes content hash and skips GitHub upsert when no changes are detected; an `ExportJob` is created with `message="no_changes"` in that case.
 - Management command `backfill_last_published_hash` added to populate missing hashes for previously published posts (supports `--dry-run` and `--force`).
 
 

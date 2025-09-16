@@ -84,6 +84,8 @@ class PostAdmin(admin.ModelAdmin):
     filter_horizontal = ("categories",)
     inlines = [PostImageInline]
     actions = ["admin_delete_posts"]
+    # Add publish action
+    actions += ["publish_posts"]
 
     class DeleteConfirmationForm(forms.Form):
         MODE_CHOICES = [("db", "DB-only (default)"), ("repo", "DB + Repo")]
@@ -102,6 +104,192 @@ class PostAdmin(admin.ModelAdmin):
         return redirect(f"./delete_selected_confirm/?pks={pks}")
 
     admin_delete_posts.short_description = "Delete selected posts (DB-only or DB+Repo)"
+
+    def publish_posts(self, request, queryset):
+        """Admin action to publish selected posts immediately via `publish_post`.
+
+        For each post: ensure status/published_at, call `publish_post`, and record an ExportJob.
+        """
+        from django.utils import timezone
+        from .services.publish import publish_post
+        from .models import ExportJob
+
+        successes = 0
+        failures = []
+
+        for p in queryset.select_related("site"):
+            # Ensure published status
+            changed = False
+            if getattr(p, "status", "") != "published":
+                p.status = "published"
+                changed = True
+            if not getattr(p, "published_at", None):
+                p.published_at = timezone.now()
+                changed = True
+            if changed:
+                p.save(update_fields=["status", "published_at"])
+
+            try:
+                res = publish_post(p)
+                # If commit_sha is None => no changes
+                if res.commit_sha is None:
+                    ExportJob.objects.create(
+                        post=p,
+                        commit_sha=None,
+                        repo_url=f"https://github.com/{p.site.repo_owner}/{p.site.repo_name}",
+                        branch=getattr(p.site, "default_branch", "main"),
+                        path=getattr(p, "repo_path", None),
+                        export_status="success",
+                        action="publish",
+                        message="no_changes",
+                    )
+                else:
+                    ExportJob.objects.create(
+                        post=p,
+                        commit_sha=res.commit_sha,
+                        repo_url=f"https://github.com/{p.site.repo_owner}/{p.site.repo_name}",
+                        branch=getattr(p.site, "default_branch", "main"),
+                        path=getattr(p, "repo_path", None),
+                        export_status="success",
+                        action="publish",
+                    )
+                successes += 1
+            except Exception as e:
+                # Log failure and create failed ExportJob
+                logger.exception("Admin publish failed for post pk=%s", p.pk)
+                # Try to extract friendly message from exception (GithubException returns dict in args)
+                emsg = None
+                try:
+                    arg0 = e.args[0]
+                    if isinstance(arg0, dict) and "message" in arg0:
+                        emsg = arg0["message"]
+                except Exception:
+                    emsg = str(e)
+                if not emsg:
+                    emsg = str(e)
+                ExportJob.objects.create(
+                    post=p,
+                    commit_sha=None,
+                    repo_url=f"https://github.com/{p.site.repo_owner}/{p.site.repo_name}",
+                    branch=getattr(p.site, "default_branch", "main"),
+                    path=getattr(p, "repo_path", None),
+                    export_status="failed",
+                    action="publish",
+                    message=emsg,
+                )
+                failures.append((p.pk, emsg))
+
+        if successes:
+            self.message_user(request, f"Published {successes} posts.", level=messages.SUCCESS)
+        if failures:
+            for pk, err in failures:
+                self.message_user(request, f"Post {pk} publish failed: {err}", level=messages.ERROR)
+
+    publish_posts.short_description = "Publish selected posts"
+
+    def refresh_posts(self, request, queryset):
+        """Admin action to refresh selected posts: compare DB content with repo content and record drift or ok."""
+        from .github_client import GitHubClient
+        from .utils import content_hash
+        from .models import ExportJob
+
+        gh = None
+        try:
+            gh = GitHubClient()
+        except Exception:
+            self.message_user(request, "GitHub client initialization failed (missing token?)", level=messages.ERROR)
+            return
+
+        oks = 0
+        drifts = 0
+        for p in queryset.select_related("site"):
+            logger.debug("refresh_posts: checking post pk=%s site=%s", getattr(p, 'pk', None), getattr(p, 'site', None))
+            owner = getattr(p.site, "repo_owner", None)
+            repo = getattr(p.site, "repo_name", None)
+            branch = getattr(p.site, "default_branch", "main")
+            path = getattr(p, "repo_path", None)
+            try:
+                file_obj = gh.get_file(owner, repo, path, branch=branch)
+                logger.debug("refresh_posts: got file_obj=%s", bool(file_obj))
+            except Exception as e:
+                logger.exception("refresh_posts: get_file failed for post pk=%s: %s", p.pk, e)
+                # Try to extract friendly message; if it's a 404-like error we'll treat as drift_absent
+                emsg = None
+                try:
+                    arg0 = e.args[0]
+                    if isinstance(arg0, dict) and "message" in arg0:
+                        emsg = arg0["message"]
+                except Exception:
+                    emsg = str(e)
+                if emsg and "404" in emsg:
+                    msg_code = "drift_absent"
+                elif emsg and ("Token mancante" in emsg or "permessi" in emsg):
+                    msg_code = "permission_denied"
+                elif emsg and ("Rate limit" in emsg or "rate limit" in emsg or "429" in emsg):
+                    msg_code = "rate_limited"
+                else:
+                    msg_code = "drift_absent"
+
+                ExportJob.objects.create(
+                    post=p,
+                    commit_sha=None,
+                    repo_url=f"https://github.com/{owner}/{repo}",
+                    branch=branch,
+                    path=path,
+                    export_status="failed",
+                    action="refresh",
+                    message=emsg or msg_code,
+                )
+                # Map to admin-visible message
+                if msg_code == "permission_denied":
+                    self.message_user(request, f"Post {p.pk} error: Token mancante o permessi insufficienti.", level=messages.ERROR)
+                elif msg_code == "rate_limited":
+                    self.message_user(request, f"Post {p.pk} rate-limited by GitHub: riprova più tardi.", level=messages.ERROR)
+                else:
+                    self.message_user(request, f"Post {p.pk} drift: file absent in repo.", level=messages.WARNING)
+                drifts += 1
+                continue
+
+            repo_content = file_obj.get("content")
+            local_hash = content_hash(p)
+            # Compute hash of repo content in same way; create a temporary Post-like object? We'll reuse content_hash by patching p.content temporarily
+            orig_content = p.content
+            try:
+                p.content = repo_content
+                repo_hash = content_hash(p)
+            finally:
+                p.content = orig_content
+
+            if repo_hash == local_hash:
+                ExportJob.objects.create(
+                    post=p,
+                    commit_sha=file_obj.get("sha"),
+                    repo_url=f"https://github.com/{owner}/{repo}",
+                    branch=branch,
+                    path=path,
+                        export_status="success",
+                        action="refresh",
+                        message="ok",
+                )
+                self.message_user(request, f"Post {p.pk} ok (no drift).", level=messages.INFO)
+                oks += 1
+            else:
+                ExportJob.objects.create(
+                    post=p,
+                    commit_sha=file_obj.get("sha"),
+                    repo_url=f"https://github.com/{owner}/{repo}",
+                    branch=branch,
+                    path=path,
+                        export_status="failed",
+                        action="refresh",
+                        message="drift_content",
+                )
+                self.message_user(request, f"Post {p.pk} drift: content differs.", level=messages.WARNING)
+                drifts += 1
+
+        self.message_user(request, f"Refresh complete: {oks} ok, {drifts} drifts.", level=messages.INFO)
+
+    refresh_posts.short_description = "Refresh selected posts (check repo vs DB)"
 
     def delete_selected_confirm(self, request):
         pks = request.GET.get("pks", "")

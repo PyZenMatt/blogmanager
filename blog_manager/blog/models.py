@@ -380,6 +380,13 @@ class ExportJob(models.Model):
         ("pending", "Pending"),
     ]
 
+    ACTION_CHOICES = [
+        ("publish", "Publish"),
+        ("refresh", "Refresh/Check"),
+        ("delete_db_only", "Delete DB-only"),
+        ("delete_repo_and_db", "Delete Repo + DB"),
+    ]
+
     post = models.ForeignKey(
         "Post", on_delete=models.CASCADE, related_name="export_jobs"
     )
@@ -391,7 +398,10 @@ class ExportJob(models.Model):
     export_status = models.CharField(
         max_length=16, choices=EXPORT_STATUS_CHOICES, default="pending"
     )
-    export_error = models.TextField(blank=True, null=True)
+    # Normalized action describing what triggered this job
+    action = models.CharField(max_length=32, choices=ACTION_CHOICES, blank=True, null=True)
+    # Human-readable message/details about the job outcome (e.g. "no_changes", "drift_absent")
+    message = models.TextField(blank=True, null=True)
 
     def __str__(self):
         pid = getattr(self.post, "pk", None)

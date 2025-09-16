@@ -1,3 +1,68 @@
+# Agent Playbook — BlogManager
+
+This playbook documents the operational behaviors the agent and maintainers must follow when interacting with the BlogManager application.
+
+Summary
+- Audit model: ExportJob records every external-sync action performed on posts. The canonical fields are:
+  - `action`: one of `publish`, `refresh`, `delete_db_only`, `delete_repo_and_db`.
+  - `export_status`: one of `success`, `failed`, `pending`.
+  - `message`: human-readable details (examples: `no_changes`, `drift_absent`, `drift_content`, `Token mancante o permessi insufficienti`, `Rate limit raggiunto`).
+
+- Admin-visible actions: `Publish`, `Refresh`, `Delete (DB-only | DB+Repo)`.
+
+Audit semantics
+- On every admin or service-driven interaction that reads/writes the remote Jekyll repo, create an `ExportJob` with these fields filled consistently:
+  - `post`: FK to the `Post` acted on.
+  - `exported_at`: timestamp of the action.
+  - `action`: `publish` for publish/upsert operations, `refresh` for read/compare checks, `delete_db_only`/`delete_repo_and_db` for delete flows.
+  - `export_status`: `success` when the intended effect was reached (including idempotent `no_changes`), `failed` when the operation failed, `pending` when queued.
+  - `message`: short descriptive token or localized message giving reason or extra info (e.g. `no_changes`, `drift_absent`, `drift_content`, `Token mancante o permessi insufficienti`, `Rate limit raggiunto`).
+
+Examples
+- Publish with no changes (idempotent):
+  - `action`: `publish`
+  - `export_status`: `success`
+  - `message`: `no_changes`
+
+- Publish with commit:
+  - `action`: `publish`
+  - `export_status`: `success`
+  - `message`: `None` (or short commit URL stored on `commit_sha`/`repo_url`)
+
+- Refresh when remote file absent:
+  - `action`: `refresh`
+  - `export_status`: `failed`
+  - `message`: `drift_absent`
+
+- Refresh when content differs:
+  - `action`: `refresh`
+  - `export_status`: `failed`
+  - `message`: `drift_content`
+
+- GitHub auth/permission error example:
+  - `action`: `publish` or `refresh`
+  - `export_status`: `failed`
+  - `message`: `Token mancante o permessi insufficienti`
+
+Admin actions (what they do)
+- Publish: forces publish of selected posts immediately via `publish_post`. Creates `ExportJob` entries per post. Idempotent: if content unchanged, no new commit is created and `ExportJob.message` is `no_changes`.
+- Refresh: fetches file from GitHub and compares content (by the content hashing algorithm used by `content_hash`). Creates `ExportJob` entries with `ok`, `drift_absent`, or `drift_content` messages.
+- Delete (confirmation flow): allows DB-only or DB+Repo deletion. The `ALLOW_REPO_DELETE` flag protects repo deletes in production.
+
+Operational flags
+- `EXPORT_ENABLED` (bool): when `True` signal-driven exports and some management commands may run; in tests we often set `EXPORT_ENABLED=False` to avoid spawning real git work.
+- `ALLOW_REPO_DELETE` (bool): guards admin UI and management commands from deleting files in remote repos. Default `False` in production unless explicitly enabled.
+
+Where to look in the code
+- ExportJob model: `blog/models.py` (fields: `action`, `export_status`, `message`, `commit_sha`, `repo_url`, `branch`, `path`).
+- Publish flow: `blog/services/publish.py` (produces `ExportJob` and updates `Post.last_published_hash`).
+- Delete wrapper: `blog/services/github_ops.py` (calls GitHub client and writes `ExportJob`).
+- Admin actions: `blog/admin.py` (publish, refresh, delete confirmation flows produce `ExportJob` and user messages).
+- GitHub client: `blog/github_client.py` (maps GitHub errors to friendlier messages that surface in `ExportJob.message`).
+
+Notes
+- Keep `ExportJob.message` short and machine-parseable when possible (e.g. `no_changes`, `drift_content`) while also allowing richer human messages (e.g. localized permission messages). This helps QA automation and human troubleshooting.
+
 Ruolo: Sei Tech Lead + Issue Architect + Django/DRF Senior Operativo del progetto Blog Manager, backend headless (Django 5.x + DRF) per servire blog multi-sito Jekyll (JSON per siti statici). L’app include: contenuti, endpoint REST, contact POST /api/contact/submit/, storage locale (opzione Cloudinary/S3), CI, deploy su PythonAnywhere.
 
 

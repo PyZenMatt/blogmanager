@@ -58,7 +58,7 @@ def test_publish_idempotency_first_and_no_change(monkeypatch, tmp_path):
     # Second publish with no changes should not call upsert (no new commits)
     res2 = publish_post(post)
     assert res2.commit_sha is None
-    # ExportJob should have recorded export_error=no_changes (checked indirectly by no commit)
+    # ExportJob should have recorded message=no_changes (checked indirectly by no commit)
 
 
 @pytest.mark.django_db

@@ -8,7 +8,7 @@ This file documents the key artifacts, commands and test outputs that demonstrat
 - Migration files:
   - `blog/migrations/0022_add_last_published_hash.py` — adds field
   - `blog/migrations/0023_add_index_last_published_hash.py` — adds DB index
-- `publish_post` now computes `content_hash(post)` and skips GitHub upsert when unchanged. When skipped, an `ExportJob` is created with `export_error="no_changes"`.
+- `publish_post` now computes `content_hash(post)` and skips GitHub upsert when unchanged. When skipped, an `ExportJob` is created with `message="no_changes"`.
 - Management command `backfill_last_published_hash` added to populate hashes for posts with evidence of prior publish. Supports `--dry-run` and `--force`.
 
 ## Commands used during development
@@ -29,7 +29,7 @@ This file documents the key artifacts, commands and test outputs that demonstrat
 - Migration files:
   - `blog/migrations/0022_add_last_published_hash.py` — adds field
   - `blog/migrations/0023_add_index_last_published_hash.py` — adds DB index
-- `publish_post` now computes `content_hash(post)` and skips GitHub upsert when unchanged. When skipped, an `ExportJob` is created with `export_error="no_changes"`.
+- `publish_post` now computes `content_hash(post)` and skips GitHub upsert when unchanged. When skipped, an `ExportJob` is created with `message="no_changes"`.
 - Management command `backfill_last_published_hash` added to populate hashes for posts with evidence of prior publish. Supports `--dry-run` and `--force`.
 
 ## Commands used during development

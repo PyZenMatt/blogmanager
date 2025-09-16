@@ -36,7 +36,8 @@ def delete_post_from_repo(post, *, message: str, client: Optional[GitHubClient] 
             branch=branch,
             path=path,
             export_status="success" if res.get("status") in ("deleted", "already_absent") else "failed",
-            export_error=None if res.get("status") in ("deleted", "already_absent") else str(res),
+            action=("delete_repo_and_db" if res.get("status") == "deleted" else "delete_db_only"),
+            message=(None if res.get("status") in ("deleted", "already_absent") else str(res)),
         )
     except Exception:
         # In environments without Django ORM available (e.g., unit tests without DB), skip audit creation.

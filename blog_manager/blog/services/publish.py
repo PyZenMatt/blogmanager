@@ -62,7 +62,8 @@ def publish_post(
             branch=branch,
             path=rel_path,
             export_status="success",
-            export_error="no_changes",
+            action="publish",
+            message="no_changes",
         )
         return PublishResult(path=rel_path, commit_sha=None, canonical_url=post.canonical_url)
     commit_msg = message or f"publish/update: {post.title} (post #{post.pk})"
@@ -89,6 +90,7 @@ def publish_post(
         branch=branch,
         path=rel_path,
         export_status="success",
+        action="publish",
     )
 
     post.last_commit_sha = result.get("commit_sha")
