@@ -13,7 +13,7 @@ Ruolo: Sei Tech Lead + Issue Architect + Django/DRF Senior Operativo del progett
 
 ---
 
-# 📄 AGENT\_PLAYBOOK — BlogManager (Publish via GitHub API, no terminal)
+# 📄 AGENT_PLAYBOOK — BlogManager (Publish via GitHub API, no terminal)
 
 > File suggerito: `docs/AGENT_PLAYBOOK_BlogManager.md`
 
@@ -47,7 +47,7 @@ Rendere la pubblicazione di articoli **one-click** dal pannello Admin, senza usa
 * **Idempotenza**: calcolo **content hash** (front-matter + body normalizzato). Se invariato → no nuovo commit.
 * **Atomicità visibile**: un articolo = un commit; ok più commit se necessario, ma evitare rumore.
 * **Sicurezza**: usare **GitHub App** o token con permessi minimi; feature flag per operazioni distruttive.
-* **Messaggi Admin** chiari\*\*:\*\* link al commit, stato (success/warning/error), motivazione (e.g., “no changes”).
+* **Messaggi Admin** chiari**:** link al commit, stato (success/warning/error), motivazione (e.g., “no changes”).
 * **Micro-patch**: modifiche piccole e reversibili; niente refactor massivi.
 * **Log/audit** obbligatori: sempre traccia di cosa è stato fatto e dove.
 
@@ -123,11 +123,11 @@ Rendere la pubblicazione di articoli **one-click** dal pannello Admin, senza usa
 
 Per **ogni** azione:
 
-* `action`: publish | refresh | delete\_db\_only | delete\_repo\_and\_db
-* `status`: success | no\_changes | warning | error
+* `action`: publish | refresh | delete_db_only | delete_repo_and_db
+* `status`: success | no_changes | warning | error
 * `message`: breve motivo umano-leggibile
 * `repo`: owner/name, `branch`
-* `path`: repo\_path
+* `path`: repo_path
 * `commit_sha`, `commit_url` (quando applicabile)
 * `content_hash` attuale
 * `duration_ms`, `timestamp`
@@ -198,3 +198,17 @@ Per **ogni** azione:
 
 Questo playbook è pronto per essere messo nel repo sotto `docs/`.
 Vuoi che adesso apra le **issue operative** (piccole e sequenziali) in base a questo playbook?
+
+## 14) Issue Intake & Implementation (operational agreement)
+
+Per evitare fraintendimenti, la procedura che seguirò quando mi fornisci issue pronte è la seguente:
+
+* **Formato issue richiesto**: ogni issue deve includere breve descrizione, criterio di accettazione (DoD), file/moduli interessati, e se applicabile `DRY_RUN=true` per operazioni distruttive.
+* **Approccio di lavoro**: implemento cambiamenti direttamente sul branch `main` solo per modifiche non rischiose e documentazionali; per codice di produzione sensibile creerò un branch feature e aprirò una PR se vuoi revisione.
+* **Commit e messaggi**: ogni cambiamento sarà un micro-commit con messaggio chiaro (`ops/<area>: breve descrizione` o `content/publish: ...`).
+* **Testing**: eseguo test automatici disponibili (`pytest`) per le aree toccate; se i test non esistono aggiungerò test minimi quando appropriato.
+* **Rollback**: aggiungerò note di rollback nelle issue e, quando possibile, un test che dimostri lo stato atteso dopo rollback.
+* **Temp flag**: per operazioni distruttive o delete repo userò `DRY_RUN=true` come default e ti chiederò conferma per disabilitarlo.
+* **Audit & Telemetria**: ogni operazione importante aggiornerà i log in `docs/EVIDENCE_LOG.md` con riferimento commit, timestamp e risultato.
+
+Se vuoi, posso ora trasformare il playbook aggiornato in una serie di issue operative pronte (titoli + descrizioni + DoD). Dimmi il numero di issue che preferisci generare in batch (es: 5). 
