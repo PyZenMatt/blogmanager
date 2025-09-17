@@ -117,3 +117,18 @@ La pipeline CI esegue linting (Black, Isort, Flake8), migrazioni e test (pytest/
 
 ## Licenza
 MIT – vedi file `LICENSE`
+
+**Local production reproduction (Docker Compose)**
+
+- Copy `.env.example` to `.env` and adjust values (especially `SECRET_KEY` and `GIT_TOKEN`).
+
+  ```bash
+  cp .env.example .env
+  # edit .env and set SECRET_KEY, GIT_TOKEN, DATABASE_URL if needed
+  ```
+- Build and run with Docker Compose:
+
+  ```bash
+  docker compose up --build
+  ```
+- The app will be available at `http://localhost:8000`. Postgres data is stored in a Docker volume named `db-data`.

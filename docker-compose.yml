@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: blogmanager
+      POSTGRES_USER: blog
+      POSTGRES_PASSWORD: blog
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  web:
+    build: .
+    command: gunicorn blog_manager.wsgi:application -b 0.0.0.0:8000 --workers 3
+    volumes:
+      - .:/app:cached
+    env_file:
+      - .env
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+volumes:
+  db-data:
