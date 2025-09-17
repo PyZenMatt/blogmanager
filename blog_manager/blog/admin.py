@@ -8,7 +8,7 @@ import threading
 
 logger = logging.getLogger(__name__)
 
-from .models import Author, Category, Comment, Post, PostImage, Site
+from .models import Author, Category, Comment, Post, PostImage, Site, ExportAudit
 from django import forms
 from django.shortcuts import render, redirect
 from django.urls import path
@@ -21,6 +21,8 @@ class SiteAdmin(admin.ModelAdmin):
     list_display = ("id", "name")
     readonly_fields = ("repo_candidate",)
     search_fields = ("name",)
+    actions = ["run_migrations"]
+    change_form_template = "admin/blog/site_change_form.html"
     fieldsets = (
         (None, {"fields": ("name", "domain")}),
         (
@@ -50,6 +52,84 @@ class SiteAdmin(admin.ModelAdmin):
         return ""
 
     repo_candidate.short_description = "Percorso repo candidato"
+
+    def run_migrations(self, request, queryset):
+        """Admin action to run migrations (records MigrationLog)."""
+        from django.db import connection
+        from blog.models import MigrationLog
+        from django.urls import reverse
+        user = request.user.get_username() if request.user else None
+        # Run migrate command and capture output (best-effort)
+        try:
+            from io import StringIO
+            from django.core.management import call_command
+
+            out = StringIO()
+            call_command("migrate", stdout=out)
+            output = out.getvalue()
+            MigrationLog.objects.create(user=user, command="migrate", output=output, success=True)
+            self.message_user(request, "Migrations run successfully.")
+            # Redirect to MigrationLog changelist so the admin user sees the log
+            return redirect(reverse('admin:blog_migrationlog_changelist'))
+        except Exception:
+            MigrationLog.objects.create(user=user, command="migrate", output="error", success=False)
+            self.message_user(request, "Migrations failed (see MigrationLog).", level=messages.ERROR)
+            return redirect(reverse('admin:blog_migrationlog_changelist'))
+
+    run_migrations.short_description = "Run migrations and record MigrationLog"
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        """Add quick links to posts/categories/comments filtered by this site."""
+        if extra_context is None:
+            extra_context = {}
+        try:
+            site = Site.objects.get(pk=object_id)
+            base = request.build_absolute_uri('/')[:-1]
+            links = {
+                'posts': f"{base}/admin/blog/post/?site__id__exact={site.pk}",
+                'categories': f"{base}/admin/blog/category/?site__id__exact={site.pk}",
+                'comments': f"{base}/admin/blog/comment/?post__site__id__exact={site.pk}",
+            }
+            extra_context['site_links'] = links
+        except Exception:
+            extra_context['site_links'] = {}
+        return super().change_view(request, object_id, form_url, extra_context=extra_context)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path('<path:object_id>/run_sync/', self.admin_site.admin_view(self.run_sync_view), name='blog_site_run_sync'),
+        ]
+        return custom + urls
+
+    def run_sync_view(self, request, object_id):
+        from django.shortcuts import render
+        from django.core.management import call_command
+        from io import StringIO
+
+        site = Site.objects.get(pk=object_id)
+        output = ""
+        audits = []
+        if request.method == 'POST':
+            mode = request.POST.get('mode')
+            out = StringIO()
+            try:
+                if mode == 'apply':
+                    call_command('sync_repos', '--apply', '--sites', site.slug, stdout=out)
+                else:
+                    call_command('sync_repos', '--dry-run', '--sites', site.slug, stdout=out)
+                output = out.getvalue()
+            except Exception as e:
+                output = str(e)
+
+        # Load latest ExportAudit for site (always available for GET and POST)
+        try:
+            audits = list(ExportAudit.objects.filter(site=site).order_by('-created_at')[:5])
+        except Exception:
+            audits = []
+
+        return render(request, 'admin/blog/site_run_sync.html', {'site': site, 'output': output, 'audits': audits})
+
 
 
 @admin.register(Category)
@@ -90,6 +170,7 @@ class PostAdmin(admin.ModelAdmin):
     class DeleteConfirmationForm(forms.Form):
         MODE_CHOICES = [("db", "DB-only (default)"), ("repo", "DB + Repo")]
         mode = forms.ChoiceField(choices=MODE_CHOICES, widget=forms.RadioSelect, initial="db")
+        force_repo = forms.BooleanField(required=False, help_text="Allow repo deletion even if disabled in settings (superusers only)")
 
     def get_urls(self):
         urls = super().get_urls()
@@ -302,32 +383,75 @@ class PostAdmin(admin.ModelAdmin):
             form = self.DeleteConfirmationForm(request.POST)
             if form.is_valid():
                 mode = form.cleaned_data["mode"]
+                force_repo_flag = form.cleaned_data.get("force_repo")
+                # allow superusers to force repo deletion even if settings disable it
+                if force_repo_flag and request.user and request.user.is_superuser:
+                    allow_repo_effective = True
+                else:
+                    allow_repo_effective = allow_repo
                 results = []
+                # If admin asked for repo deletion but the effective setting disallows it, fall back to DB-only
+                if mode == "repo" and not allow_repo_effective:
+                    self.message_user(request, "Repo deletions are disabled by configuration; performing DB-only deletion.", level=messages.WARNING)
+                    mode = "db"
+
                 for p in posts:
-                    if mode == "repo" and allow_repo:
+                    if mode == "repo" and allow_repo_effective:
+                        # attempt to delete from repo first (and optionally sync local working copy)
                         try:
-                            res = delete_post_from_repo(p, message=f"admin: delete post #{p.pk}")
-                            results.append((p.pk, "repo", res.get("status"), res.get("commit_sha"), res.get("html_url")))
+                            res = delete_post_from_repo(p, message=f"admin: delete post #{p.pk}", sync_local=True)
+                            status = res.get("status")
+                            commit_sha = res.get("commit_sha")
+                            html_url = res.get("html_url")
+                            msg = res.get("message")
+                            local_sync_msg = res.get("local_sync_message")
+                            results.append((p.pk, "repo", status, commit_sha, html_url, msg, local_sync_msg))
                         except Exception as e:
-                            results.append((p.pk, "repo", "error", str(e), None))
-                    # Only delete DB after successful repo delete (if requested)
-                    if mode == "db" or (mode == "repo" and allow_repo):
-                        # If repo requested but delete failed, skip DB delete
-                        if mode == "repo" and allow_repo:
-                            last = results[-1]
-                            if last[2] == "error":
-                                continue
-                        p.delete()
-                        results.append((p.pk, "db", "deleted", None, None))
+                            results.append((p.pk, "repo", "error", None, None, str(e), None))
+
+                        # Only delete DB if repo deletion reported success or file already absent
+                        last = results[-1]
+                        if last[2] in ("deleted", "already_absent"):
+                            try:
+                                p.delete()
+                                results.append((p.pk, "db", "deleted", None, None))
+                            except Exception:
+                                results.append((p.pk, "db", "error", None, None))
+                        else:
+                            # skip DB deletion and report repo deletion failure
+                            continue
+                    elif mode == "db":
+                        try:
+                            p.delete()
+                            results.append((p.pk, "db", "deleted", None, None))
+                        except Exception:
+                            results.append((p.pk, "db", "error", None, None))
 
                 # Build a simple summary message
                 for r in results:
-                    if r[2] == "deleted":
-                        self.message_user(request, mark_safe(f"Post {r[0]} deleted from DB."), level=messages.SUCCESS)
-                    elif r[2] in ("deleted", "already_absent"):
-                        self.message_user(request, f"Post {r[0]} repo status: {r[2]}", level=messages.INFO)
-                    else:
-                        self.message_user(request, f"Post {r[0]} error: {r[2]}", level=messages.ERROR)
+                    pk = r[0]
+                    kind = r[1]
+                    status = r[2]
+                    # repo tuple: (pk, 'repo', status, commit_sha, html_url, message)
+                    if kind == "db" and status == "deleted":
+                        self.message_user(request, mark_safe(f"Post {pk} deleted from DB."), level=messages.SUCCESS)
+                    elif kind == "repo":
+                        msg = r[5] if len(r) > 5 else None
+                        local_sync = r[6] if len(r) > 6 else None
+                        if status in ("deleted", "already_absent"):
+                            self.message_user(request, f"Post {pk} repo status: {status}", level=messages.INFO)
+                        elif status in ("no_repo_path", "no_owner_repo"):
+                            out = f"Post {pk} repo not deleted: {status}. {msg or ''}"
+                            if local_sync:
+                                out += f"; local sync: {local_sync}"
+                            self.message_user(request, out, level=messages.WARNING)
+                        else:
+                            out = f"Post {pk} repo error: {status}. {msg or ''}"
+                            if local_sync:
+                                out += f"; local sync: {local_sync}"
+                            self.message_user(request, out, level=messages.ERROR)
+                    elif kind == "db" and status != "deleted":
+                        self.message_user(request, f"Post {pk} DB deletion error: {status}", level=messages.ERROR)
 
                 return redirect("../")
         else:
@@ -383,7 +507,7 @@ class PostAdmin(admin.ModelAdmin):
 @admin.register(Comment)
 class CommentAdmin(admin.ModelAdmin):
     list_display = ("id", "post", "author_name", "author_email", "created_at")
-    list_filter = ("created_at",)
+    list_filter = ("created_at", "post__site")
     search_fields = ("author_name", "author_email", "text")
 
 
@@ -391,7 +515,7 @@ class CommentAdmin(admin.ModelAdmin):
 class PostImageAdmin(admin.ModelAdmin):
     list_display = ("post", "image_thumb", "caption", "image_url")
     search_fields = ("post__title", "caption")
-    list_filter = ("post",)
+    list_filter = ("post__site",)
 
     def image_thumb(self, obj):
         if obj.image:
@@ -399,7 +523,17 @@ class PostImageAdmin(admin.ModelAdmin):
                 '<img src="{}" style="max-height: 60px; max-width: 100px;" />',
                 obj.image.url,
             )
-        return ""
+
+
+    from django.contrib import admin as _admin
+    from .models import MigrationLog
+
+
+    @_admin.register(MigrationLog)
+    class MigrationLogAdmin(_admin.ModelAdmin):
+        list_display = ("id", "command", "user", "run_at", "success")
+        readonly_fields = ("command", "user", "run_at", "output", "success")
+        pass
 
     image_thumb.short_description = "Anteprima"  # noqa: A003 - admin attr
 
@@ -409,3 +543,9 @@ class PostImageAdmin(admin.ModelAdmin):
         return ""
 
     image_url.short_description = "URL Immagine"  # noqa: A003 - admin attr
+
+
+@admin.register(ExportAudit)
+class ExportAuditAdmin(admin.ModelAdmin):
+    list_display = ("id", "run_id", "action", "site", "created_at")
+    readonly_fields = ("run_id", "action", "site", "summary", "created_at")

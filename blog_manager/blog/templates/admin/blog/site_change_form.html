@@ -1,0 +1,11 @@
+{% extends "admin/change_form.html" %}
+
+{% block object-tools-items %}
+  {{ block.super }}
+  {% if change %}
+    <li>
+      {% url 'admin:blog_site_run_sync' original.pk as runsync_url %}
+      <a class="addlink" href="{{ runsync_url }}">Run Sync</a>
+    </li>
+  {% endif %}
+{% endblock %}

@@ -18,10 +18,15 @@ def _friendly_error(e: GithubException, context: str) -> GithubException:
 
 class GitHubClient:
     def __init__(self, token: Optional[str] = None):
-        token = token or os.getenv("GITHUB_TOKEN")
+        token = token or os.getenv("GITHUB_TOKEN") or os.getenv("GIT_TOKEN")
         if not token:
-            raise ValueError("GITHUB_TOKEN is required")
-        self.gh = Github(token)
+            # Allow unauthenticated access for public repos; caller should handle permission errors.
+            import warnings
+
+            warnings.warn("GITHUB_TOKEN/GIT_TOKEN not set: using unauthenticated GitHub client (rate limits stricter).", RuntimeWarning)
+            self.gh = Github()
+        else:
+            self.gh = Github(token)
 
     def upsert_file(
         self,
@@ -115,3 +120,39 @@ class GitHubClient:
         except Exception:
             raw = getattr(c, "content", None)
         return {"content": raw, "encoding": getattr(c, "encoding", None), "sha": getattr(c, "sha", None)}
+
+    def list_files(self, owner: str, repo: str, path: str = "", branch: str = "main") -> list:
+        """
+        List repository files under `path` at `branch` recursively.
+        Returns a list of dicts: {"path": str, "type": "file"|"dir", "sha": str}
+        """
+        r = self.gh.get_repo(f"{owner}/{repo}")
+        try:
+            contents = r.get_contents(path or "", ref=branch)
+        except GithubException as e:
+            raise _friendly_error(e, f"Error listing contents for {owner}/{repo}@{branch} path: {path}")
+
+        results_map = {}
+
+        def _walk(items):
+            for it in items:
+                t = getattr(it, "type", None) or ("dir" if hasattr(it, "type") and it.type == "dir" else "file")
+                p = getattr(it, "path", None)
+                s = getattr(it, "sha", None)
+                if p and p not in results_map:
+                    results_map[p] = {"path": p, "type": t, "sha": s}
+                if t == "dir":
+                    try:
+                        children = r.get_contents(p, ref=branch)
+                        if not isinstance(children, list):
+                            children = [children]
+                        _walk(children)
+                    except GithubException as e:
+                        # propagate friendly error
+                        raise _friendly_error(e, f"Error listing dir {p} in {owner}/{repo}@{branch}")
+
+        # `contents` may be a single ContentFile or a list
+        if not isinstance(contents, list):
+            contents = [contents]
+        _walk(contents)
+        return list(results_map.values())

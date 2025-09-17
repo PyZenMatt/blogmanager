@@ -249,8 +249,8 @@ class Author(models.Model):
 class Post(models.Model):
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="posts")
     title = models.CharField(max_length=200)
-    # Deve restare max_length=200 + collation per coerenza con migration 0008
-    slug = models.SlugField(max_length=200, db_collation="utf8mb4_unicode_ci")
+    # Deve restare max_length=200; avoid MySQL-specific collation on SQLite
+    slug = models.SlugField(max_length=200)
     author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True)
     categories = models.ManyToManyField(Category, related_name="posts", blank=True)
     content = models.TextField()  # Markdown o HTML
@@ -507,6 +507,37 @@ class Comment(models.Model):
 
     class Meta:
         ordering = ["id"]
+
+
+class ExportAudit(models.Model):
+    """Record runs and actions performed by sync/backup/delete operations."""
+    run_id = models.CharField(max_length=64, db_index=True)
+    site = models.ForeignKey(Site, on_delete=models.SET_NULL, null=True, blank=True)
+    action = models.CharField(max_length=64)  # e.g. sync:dry-run, sync:apply, delete:dry-run
+    summary = models.JSONField(blank=True, null=True)
+    created_by = models.CharField(max_length=100, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"ExportAudit {self.run_id} {self.action}"
+
+
+class MigrationLog(models.Model):
+    """Record admin-triggered migration runs."""
+    run_at = models.DateTimeField(auto_now_add=True)
+    user = models.CharField(max_length=150, blank=True, null=True)
+    command = models.CharField(max_length=200)
+    output = models.TextField(blank=True, null=True)
+    success = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-run_at"]
+
+    def __str__(self):
+        return f"Migration {self.command} at {self.run_at} ({'ok' if self.success else 'fail'})"
 
 
 # Immagini multiple per post

@@ -10,7 +10,10 @@
   {% endfor %}
   </ul>
   <form method="post">{% csrf_token %}
-    {{ form.as_p }}
+    {{ form.mode }}
+    {% if request.user.is_superuser %}
+      <p>{{ form.force_repo }} {{ form.force_repo.help_text }}</p>
+    {% endif %}
     {% if not allow_repo %}
       <p><em>{% trans "Repo deletion is not allowed by settings." %}</em></p>
     {% endif %}

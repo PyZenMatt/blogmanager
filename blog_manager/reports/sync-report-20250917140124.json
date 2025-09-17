@@ -1,0 +1,133 @@
+{
+  "run_id": "20250917140124",
+  "sites": {
+    "sand_box_2": {
+      "created": [
+        {
+          "path": "2025-09-17-09-17-09-17-09-17-nuovo_post_per_controllare_1.md",
+          "hash": "4c49df0514",
+          "slug": "09-17-09-17-09-17-09-17-nuovo_post_per_controllare_1"
+        },
+        {
+          "path": "2025-09-17-09-17-09-17-09-17-nuovo_post_per_controllare_2.md",
+          "hash": "6d9d5eac07",
+          "slug": "09-17-09-17-09-17-09-17-nuovo_post_per_controllare_2"
+        },
+        {
+          "path": "2025-09-17-09-17-09-17-09-17-nuovo_post_per_controllare_3.md",
+          "hash": "e41ba49c62",
+          "slug": "09-17-09-17-09-17-09-17-nuovo_post_per_controllare_3"
+        },
+        {
+          "path": "2025-09-17-09-17-09-17-09-17-nuovo_post_per_controllare_4.md",
+          "hash": "76a4ae9c3b",
+          "slug": "09-17-09-17-09-17-09-17-nuovo_post_per_controllare_4"
+        },
+        {
+          "path": "2025-09-17-09-17-09-17-09-17-nuovo_post_per_controllare_5.md",
+          "hash": "c673dfb0eb",
+          "slug": "09-17-09-17-09-17-09-17-nuovo_post_per_controllare_5"
+        },
+        {
+          "path": "2025-09-17-09-17-09-17-09-17-nuovo_post_per_controllare_delete.md",
+          "hash": "cd200533ea",
+          "slug": "09-17-09-17-09-17-09-17-nuovo_post_per_controllare_delete"
+        }
+      ],
+      "updated": [
+        {
+          "path": "2025-09-17-09-17-09-17-nuovo_post_per_controllare_1.md",
+          "hash": "4c49df0514",
+          "post_id": 55
+        },
+        {
+          "path": "2025-09-17-09-17-09-17-nuovo_post_per_controllare_2.md",
+          "hash": "6d9d5eac07",
+          "post_id": 56
+        },
+        {
+          "path": "2025-09-17-09-17-09-17-nuovo_post_per_controllare_3.md",
+          "hash": "e41ba49c62",
+          "post_id": 57
+        },
+        {
+          "path": "2025-09-17-09-17-09-17-nuovo_post_per_controllare_4.md",
+          "hash": "76a4ae9c3b",
+          "post_id": 58
+        },
+        {
+          "path": "2025-09-17-09-17-09-17-nuovo_post_per_controllare_5.md",
+          "hash": "c673dfb0eb",
+          "post_id": 59
+        },
+        {
+          "path": "2025-09-17-09-17-09-17-nuovo_post_per_controllare_delete.md",
+          "hash": "cd200533ea",
+          "post_id": 60
+        }
+      ],
+      "unchanged": [
+        {
+          "path": "2025-09-17-09-17-nuovo_post_per_controllare_1.md",
+          "hash": "4c49df0514",
+          "post_id": 55
+        },
+        {
+          "path": "2025-09-17-09-17-nuovo_post_per_controllare_2.md",
+          "hash": "6d9d5eac07",
+          "post_id": 56
+        },
+        {
+          "path": "2025-09-17-09-17-nuovo_post_per_controllare_3.md",
+          "hash": "e41ba49c62",
+          "post_id": 57
+        },
+        {
+          "path": "2025-09-17-09-17-nuovo_post_per_controllare_4.md",
+          "hash": "76a4ae9c3b",
+          "post_id": 58
+        },
+        {
+          "path": "2025-09-17-09-17-nuovo_post_per_controllare_5.md",
+          "hash": "c673dfb0eb",
+          "post_id": 59
+        },
+        {
+          "path": "2025-09-17-09-17-nuovo_post_per_controllare_delete.md",
+          "hash": "cd200533ea",
+          "post_id": 60
+        },
+        {
+          "path": "2025-09-17-nuovo_post_per_controllare_1.md",
+          "hash": "4c49df0514",
+          "post_id": 55
+        },
+        {
+          "path": "2025-09-17-nuovo_post_per_controllare_2.md",
+          "hash": "6d9d5eac07",
+          "post_id": 56
+        },
+        {
+          "path": "2025-09-17-nuovo_post_per_controllare_3.md",
+          "hash": "e41ba49c62",
+          "post_id": 57
+        },
+        {
+          "path": "2025-09-17-nuovo_post_per_controllare_4.md",
+          "hash": "76a4ae9c3b",
+          "post_id": 58
+        },
+        {
+          "path": "2025-09-17-nuovo_post_per_controllare_5.md",
+          "hash": "c673dfb0eb",
+          "post_id": 59
+        },
+        {
+          "path": "2025-09-17-nuovo_post_per_controllare_delete.md",
+          "hash": "cd200533ea",
+          "post_id": 60
+        }
+      ]
+    }
+  }
+}

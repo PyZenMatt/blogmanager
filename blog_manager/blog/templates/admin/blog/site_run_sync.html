@@ -1,0 +1,23 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Run sync for site {{ site.slug }}</h1>
+<form method="post">{% csrf_token %}
+  <p>
+    <label><input type="radio" name="mode" value="dry" checked> Dry-run (no DB changes)</label><br>
+    <label><input type="radio" name="mode" value="apply"> Apply (create/update posts)</label>
+  </p>
+  <p><button type="submit" class="default">Run</button></p>
+</form>
+{% if output %}
+<h2>Output</h2>
+<pre style="white-space: pre-wrap;">{{ output }}</pre>
+{% endif %}
+{% if audits %}
+<h2>Recent ExportAudits</h2>
+<ul>
+{% for a in audits %}
+  <li>{{ a.created_at }} - {{ a.action }} - {{ a.summary|default:"-" }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

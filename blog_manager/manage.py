@@ -26,11 +26,21 @@ def main() -> None:
         project_env = base_dir.parent / ".env"
         os.environ.setdefault("ENV_FILE", str(project_env))
 
-    # Default: settings di sviluppo, sovrascrivibile da env
-    os.environ.setdefault(
-        "DJANGO_SETTINGS_MODULE",
-        os.getenv("DJANGO_SETTINGS_MODULE", "settings.dev"),
-    )
+    # Default settings selection:
+    # - If DJANGO_SETTINGS_MODULE is explicitly set, respect it.
+    # - Otherwise choose `settings.prod` when ENVIRONMENT=production or when
+    #   the chosen ENV_FILE ends with '.prod', else fall back to `settings.dev`.
+    explicit = os.getenv("DJANGO_SETTINGS_MODULE")
+    if explicit:
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", explicit)
+    else:
+        env_flag = os.environ.get("ENVIRONMENT", "").lower()
+        env_file = os.environ.get("ENV_FILE", "")
+        if env_flag in ("prod", "production") or str(env_file).endswith(".prod"):
+            default_settings = "settings.prod"
+        else:
+            default_settings = "settings.dev"
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", default_settings)
 
     try:
         from django.core.management import execute_from_command_line
