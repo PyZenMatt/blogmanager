@@ -75,7 +75,9 @@ def build_post_relpath(post, site):
     date = _select_date(post)
     slug = getattr(post, "slug", None) or slugify_title(getattr(post, "title", ""))
     posts_dir = (getattr(site, "posts_dir", None) or "_posts").strip("/")
-    return f"{posts_dir}/{date.strftime('%Y-%m-%d')}-{slug}.md"
+    # normalize and ensure no leading slashes
+    filename = f"{date.strftime('%Y-%m-%d')}-{slug}.md"
+    return os.path.normpath(f"{posts_dir}/{filename}")
 
 
 def compute_canonical_url(post, site):
@@ -183,6 +185,12 @@ def export_post(post):
     else:
         rel_path = build_post_relpath(post, site)
 
+    # Security: ensure rel_path is truly relative and does not escape repo_dir
+    if os.path.isabs(rel_path) or rel_path.startswith("..") or ".." + os.path.sep in rel_path:
+        logger.error("[export] Invalid relative path detected: %r", rel_path)
+        return
+
+    rel_path = rel_path.replace("\\", "/")  # normalize windows separators
     abs_path = os.path.join(repo_dir, rel_path)
     if hasattr(post, "render_markdown"):
         content = post.render_markdown()
@@ -197,6 +205,7 @@ def export_post(post):
 
     # 2) Decisione scrittura
     need_write = (getattr(post, "export_hash", None) != new_hash) or (not os.path.exists(abs_path)) or (not _is_tracked(repo_dir, rel_path))
+    committed = False
     if need_write:
         logger.debug(
             "[export] Scrittura necessaria: changed=%s exists=%s tracked=%s",
@@ -206,13 +215,15 @@ def export_post(post):
         )
         _write_atomic(abs_path, content)
         try:
-            _git(repo_dir, "add", rel_path)
+            # Use explicit `--` to avoid git interpreting paths as refs/options
+            _git(repo_dir, "add", "--", rel_path)
         except subprocess.CalledProcessError:
             logger.exception("[export] git add fallito per %s", rel_path)
         commit_msg = f"chore(blog): export {getattr(post, 'slug', '?')} ({timezone.now().date()})"
         if not _working_tree_clean(repo_dir):
             try:
                 _git(repo_dir, "commit", "-m", commit_msg)
+                committed = True
             except subprocess.CalledProcessError:
                 logger.exception("[export] git commit fallito per %s", rel_path)
         else:
@@ -230,24 +241,24 @@ def export_post(post):
             logger.warning("[export] remote non-HTTPS rilevato, useremo il remote configurato 'origin' (richiede chiavi SSH o credential helper)")
             push_url = None
 
-        if _is_ahead(repo_dir, GIT_BRANCH) or not _working_tree_clean(repo_dir):
+        # If we just committed (fresh repo) we should attempt push even if
+        # origin/<branch> does not exist yet (rev-list may fail). Also attempt
+        # push when HEAD is ahead or working tree not clean.
+        if committed or _is_ahead(repo_dir, GIT_BRANCH) or not _working_tree_clean(repo_dir):
             logger.info("[export] Push verso origin/%s", GIT_BRANCH)
             # prepare push attempt function
             def _attempt_push(target):
-                try:
-                    if target:
-                        return _git(repo_dir, "push", target, f"HEAD:{GIT_BRANCH}")
-                    else:
-                        return _git(repo_dir, "push", "origin", f"HEAD:{GIT_BRANCH}")
-                except subprocess.CalledProcessError as e:
-                    raise
+                if target:
+                    return _git(repo_dir, "push", target, f"HEAD:{GIT_BRANCH}")
+                else:
+                    return _git(repo_dir, "push", "origin", f"HEAD:{GIT_BRANCH}")
 
             # first try
             try:
                 _attempt_push(push_url)
             except subprocess.CalledProcessError as e:
-                out = (e.stdout or "").strip()
-                err = (e.stderr or "").strip().replace(GIT_TOKEN or "", MASK)
+                out = (getattr(e, 'stdout', '') or "").strip()
+                err = (getattr(e, 'stderr', '') or "").strip().replace(GIT_TOKEN or "", MASK)
                 # if rejected because remote is ahead, try fast-forward merge then retry once
                 if "non-fast-forward" in err or "failed to push some refs" in err or "Updates were rejected" in err:
                     logger.warning("[export] Push respinta per non-fast-forward; provo fetch+ff-only e ritento push")
@@ -259,8 +270,8 @@ def export_post(post):
                         try:
                             _attempt_push(push_url)
                         except subprocess.CalledProcessError as e2:
-                            out2 = (e2.stdout or "").strip()
-                            err2 = (e2.stderr or "").strip().replace(GIT_TOKEN or "", MASK)
+                            out2 = (getattr(e2, 'stdout', '') or "").strip()
+                            err2 = (getattr(e2, 'stderr', '') or "").strip().replace(GIT_TOKEN or "", MASK)
                             logger.error("[export] Retry push fallita rc=%s out=%s err=%s", getattr(e2, 'returncode', None), out2[:500], err2[:500])
                             return
                     except subprocess.CalledProcessError:
@@ -272,8 +283,8 @@ def export_post(post):
         else:
             logger.debug("[export] Niente da pushare (HEAD non ahead e WT pulito)")
     except subprocess.CalledProcessError as e:
-        out = (e.stdout or "").strip()
-        err = (e.stderr or "").strip().replace(GIT_TOKEN or "", MASK)
+        out = (getattr(e, 'stdout', '') or "").strip()
+        err = (getattr(e, 'stderr', '') or "").strip().replace(GIT_TOKEN or "", MASK)
         logger.error("[export] Recupero remote fallito rc=%s out=%s err=%s", getattr(e, 'returncode', None), out[:500], err[:500])
         return
 
@@ -299,7 +310,16 @@ def export_post(post):
         post.export_status = "success"
         changed.append("export_status")
         if changed:
-            post.save(update_fields=changed)
-            logger.debug("[export] Metadati aggiornati (%s) per post id=%s", ",".join(changed), getattr(post, "id", None))
+            try:
+                # Use QuerySet.update() to avoid firing model signals (post_save)
+                post.__class__.objects.filter(pk=getattr(post, "pk", None)).update(**{f: getattr(post, f) for f in changed})
+                logger.debug("[export] Metadati aggiornati (%s) per post id=%s (via update())", ",".join(changed), getattr(post, "id", None))
+            except Exception:
+                # Fallback to instance save if update fails for any reason
+                try:
+                    post.save(update_fields=changed)
+                    logger.debug("[export] Metadati aggiornati (%s) per post id=%s (via save())", ",".join(changed), getattr(post, "id", None))
+                except Exception:
+                    logger.exception("[export] Impossibile aggiornare metadati per post %s", getattr(post, "id", None))
     except Exception:
         logger.exception("[export] Impossibile aggiornare metadati per post %s", getattr(post, "id", None))

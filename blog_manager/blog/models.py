@@ -15,6 +15,7 @@ from django.utils.text import slugify as dj_slugify, slugify
 import os
 
 from .utils.seo import slugify_title
+import subprocess
 
 
 def upload_to_post_image(instance, filename):
@@ -118,6 +119,92 @@ class Site(models.Model):
             pass
 
         super().save(*a, **kw)
+
+        # Ensure a local git working copy exists and origin is configured.
+        # If the directory is empty and repo_owner/repo_name are set, try to clone.
+        # Otherwise, initialize a git repo and add origin if missing.
+        try:
+            repo = (self.repo_path or "").strip()
+            if repo:
+                os.makedirs(repo, exist_ok=True)
+                git_dir = os.path.join(repo, ".git")
+                remote = None
+                if getattr(self, "repo_owner", None) and getattr(self, "repo_name", None):
+                    remote = f"https://github.com/{self.repo_owner}/{self.repo_name}.git"
+                if not os.path.isdir(git_dir):
+                    # If directory appears empty and we have a remote, try to clone
+                    try:
+                        entries = os.listdir(repo)
+                    except Exception:
+                        entries = []
+                    if (not entries) and remote:
+                        try:
+                            subprocess.run(["git", "clone", remote, repo], check=True)
+                        except Exception:
+                            # fallback: init and add origin
+                            try:
+                                subprocess.run(["git", "init"], cwd=repo, check=True)
+                                if remote:
+                                    subprocess.run(["git", "remote", "add", "origin", remote], cwd=repo, check=False)
+                            except Exception:
+                                pass
+                    else:
+                        # non-empty or no remote: ensure git init and origin present if possible
+                        try:
+                            subprocess.run(["git", "init"], cwd=repo, check=True)
+                            if remote:
+                                # add origin only if not present
+                                rc = subprocess.run(["git", "remote", "get-url", "origin"], cwd=repo, capture_output=True, text=True)
+                                if rc.returncode != 0:
+                                    subprocess.run(["git", "remote", "add", "origin", remote], cwd=repo, check=False)
+                            # If repository has no commits yet, create an initial commit and attempt to push
+                            try:
+                                rc = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True)
+                                if rc.returncode != 0:
+                                    # create a README if the directory is empty, otherwise add existing files
+                                    try:
+                                        entries = os.listdir(repo)
+                                    except Exception:
+                                        entries = []
+                                    if not entries:
+                                        with open(os.path.join(repo, "README.md"), "w", encoding="utf-8") as fh:
+                                            fh.write(f"# {self.slug}\n")
+                                        subprocess.run(["git", "add", "README.md"], cwd=repo, check=False)
+                                    else:
+                                        subprocess.run(["git", "add", "--all"], cwd=repo, check=False)
+                                    # commit (allow failure)
+                                    try:
+                                                # ensure minimal git config so commit can succeed
+                                                subprocess.run(["git", "config", "user.name", os.environ.get('GIT_COMMIT_NAME','blog-manager')], cwd=repo, check=False)
+                                                subprocess.run(["git", "config", "user.email", os.environ.get('GIT_COMMIT_EMAIL','blog-manager@example.com')], cwd=repo, check=False)
+                                                # set initial branch name to configured branch
+                                                initial_branch = os.environ.get('GIT_BRANCH', 'main')
+                                                subprocess.run(["git", "checkout", "-b", initial_branch], cwd=repo, check=False)
+                                                subprocess.run(["git", "commit", "-m", "chore(blog): initial commit"], cwd=repo, check=True)
+                                    except Exception:
+                                        # commit may fail if user identity is not configured; ignore
+                                        pass
+                                    # attempt push: prefer HTTPS push URL with token if available
+                                    try:
+                                                if remote and remote.startswith("https://"):
+                                                    token = os.environ.get("GIT_TOKEN")
+                                                    user = os.environ.get("GIT_USERNAME", "x-access-token")
+                                                    if token:
+                                                        push_url = remote.replace("https://", f"https://{user}:{token}@")
+                                                        subprocess.run(["git", "push", push_url, f"HEAD:{initial_branch}"], cwd=repo, check=False)
+                                                    else:
+                                                        subprocess.run(["git", "push", "origin", f"HEAD:{initial_branch}"] , cwd=repo, check=False)
+                                                else:
+                                                    subprocess.run(["git", "push", "origin", f"HEAD:{initial_branch}"], cwd=repo, check=False)
+                                    except Exception:
+                                        pass
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
+        except Exception:
+            # best-effort only; don't block save on git failures
+            pass
 
     def __str__(self):
         return self.name

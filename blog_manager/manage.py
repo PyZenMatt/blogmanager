@@ -19,6 +19,13 @@ def main() -> None:
     if str(base_dir) not in sys.path:
         sys.path.insert(0, str(base_dir))
 
+    # If not provided, point ENV_FILE to one level above `blog_manager` (project root)
+    # This allows running `python manage.py <cmd>` from the package directory without
+    # requiring users to set ENV_FILE manually when a project-level `.env` exists.
+    if "ENV_FILE" not in os.environ:
+        project_env = base_dir.parent / ".env"
+        os.environ.setdefault("ENV_FILE", str(project_env))
+
     # Default: settings di sviluppo, sovrascrivibile da env
     os.environ.setdefault(
         "DJANGO_SETTINGS_MODULE",
