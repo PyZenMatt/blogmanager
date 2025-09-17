@@ -261,11 +261,18 @@ def export_post(post):
                 err = (getattr(e, 'stderr', '') or "").strip().replace(GIT_TOKEN or "", MASK)
                 # if rejected because remote is ahead, try fast-forward merge then retry once
                 if "non-fast-forward" in err or "failed to push some refs" in err or "Updates were rejected" in err:
-                    logger.warning("[export] Push respinta per non-fast-forward; provo fetch+ff-only e ritento push")
+                    logger.warning("[export] Push respinta per non-fast-forward; provo rebase (autostash) e ritento push")
                     try:
-                        # fetch and try fast-forward merge
+                        # fetch and try a rebase with autostash
                         _git(repo_dir, "fetch", "origin", GIT_BRANCH)
-                        _git(repo_dir, "merge", "--ff-only", f"origin/{GIT_BRANCH}")
+                        # try a normal rebase first, then fall back to --autostash
+                        try:
+                            _git(repo_dir, "rebase", f"origin/{GIT_BRANCH}")
+                        except subprocess.CalledProcessError:
+                            try:
+                                _git(repo_dir, "rebase", "--autostash", f"origin/{GIT_BRANCH}")
+                            except subprocess.CalledProcessError:
+                                raise
                         # retry push
                         try:
                             _attempt_push(push_url)
@@ -273,9 +280,32 @@ def export_post(post):
                             out2 = (getattr(e2, 'stdout', '') or "").strip()
                             err2 = (getattr(e2, 'stderr', '') or "").strip().replace(GIT_TOKEN or "", MASK)
                             logger.error("[export] Retry push fallita rc=%s out=%s err=%s", getattr(e2, 'returncode', None), out2[:500], err2[:500])
-                            return
+                            # create diagnostic branch and push it so user can inspect conflicts
+                            try:
+                                diag_branch = f"export-conflict-{site_slug}-{timezone.now().strftime('%Y%m%d%H%M%S')}"
+                                _git(repo_dir, "checkout", "-b", diag_branch)
+                                if push_url:
+                                    _git(repo_dir, "push", push_url, f"HEAD:{diag_branch}")
+                                else:
+                                    _git(repo_dir, "push", "origin", f"HEAD:{diag_branch}")
+                                logger.error("[export] Created diagnostic branch %s and pushed for inspection", diag_branch)
+                                # mark post export as failed in caller flow
+                                return
+                            except Exception:
+                                logger.exception("[export] Impossibile creare/pushare branch diagnostico")
+                                return
                     except subprocess.CalledProcessError:
-                        logger.error("[export] Impossibile fast-forward da origin/%s; abort export per evitare conflitti manuali", GIT_BRANCH)
+                        logger.error("[export] Rebase fallito; creo branch diagnostico e abort export per evitare conflitti manuali")
+                        try:
+                            diag_branch = f"export-conflict-{site_slug}-{timezone.now().strftime('%Y%m%d%H%M%S')}"
+                            _git(repo_dir, "checkout", "-b", diag_branch)
+                            if push_url:
+                                _git(repo_dir, "push", push_url, f"HEAD:{diag_branch}")
+                            else:
+                                _git(repo_dir, "push", "origin", f"HEAD:{diag_branch}")
+                            logger.error("[export] Created diagnostic branch %s and pushed for inspection", diag_branch)
+                        except Exception:
+                            logger.exception("[export] Impossibile creare/pushare branch diagnostico dopo rebase fallito")
                         return
                 else:
                     logger.error("[export] Push fallita rc=%s out=%s err=%s", getattr(e, 'returncode', None), out[:500], err[:500])
