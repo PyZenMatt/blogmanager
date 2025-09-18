@@ -7,14 +7,32 @@ import os
 import sys
 from pathlib import Path
 import environ
+from django.core.exceptions import ImproperlyConfigured
 from core.db import build_database_config
 
-# Setup environ
-env = environ.Env(DEBUG=(bool, False), EXPORT_ENABLED=(bool, True))
-# Carica .env
-environ.Env.read_env(os.getenv("ENV_FILE", ".env"))
-
+# Base dir
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+# Setup environ and load .env from project root by default
+env = environ.Env(DEBUG=(bool, False), EXPORT_ENABLED=(bool, True))
+# Resolve .env file: prefer explicit ENV_FILE, otherwise try common locations
+env_file_candidate = os.getenv("ENV_FILE")
+if env_file_candidate and os.path.exists(env_file_candidate):
+    env_file = env_file_candidate
+else:
+    # Try project root then package-level .env (some setups keep .env inside the package)
+    candidate_root = str(BASE_DIR / ".env")
+    candidate_package = str(BASE_DIR / "blog_manager" / ".env")
+    if os.path.exists(candidate_root):
+        env_file = candidate_root
+    elif os.path.exists(candidate_package):
+        env_file = candidate_package
+    else:
+        # Fallback to the project-root path (this will simply be used by read_env
+        # which will silently return if file missing). We avoid raising here.
+        env_file = candidate_root
+
+environ.Env.read_env(env_file)
 
 ANYMAIL = {
     "MAILERSEND_API_TOKEN": env("MAILERSEND_API_TOKEN", default=None),
@@ -23,7 +41,22 @@ ANYMAIL = {
 # Destinatari per le notifiche di contatto
 CONTACT_RECIPIENTS = env.list("CONTACT_RECIPIENTS", default=[])
 
-SECRET_KEY = env("SECRET_KEY")
+# SECRET_KEY: prefer env, but allow a development fallback when DEBUG is enabled.
+# This avoids crashing `manage.py runserver` in local setups that don't provide
+# a SECRET_KEY while still raising a clear error in production-like runs.
+SECRET_KEY = env("SECRET_KEY", default=None)
+if not SECRET_KEY:
+    # Determine debug mode reliably via env.bool with a default of False.
+    debug_mode = env.bool("DEBUG", default=False)
+    if debug_mode:
+        import secrets
+
+        SECRET_KEY = secrets.token_urlsafe(50)
+    else:
+        raise ImproperlyConfigured(
+            "Set the SECRET_KEY environment variable or ripara questo per bene: "
+            "imposta il database su sqlite o fornisci SECRET_KEY in .env"
+        )
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=None) or []
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=None) or []
 CLOUDINARY_URL = env("CLOUDINARY_URL", default=None)

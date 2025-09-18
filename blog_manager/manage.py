@@ -14,10 +14,14 @@ def main() -> None:
     # Directory che contiene questo manage.py (es. .../blog_manager)
     base_dir = Path(__file__).resolve().parent
 
-    # Assicura che la project root sia nel PYTHONPATH
+    # Assicura che la package dir e la project root siano nel PYTHONPATH
     # (necessario quando lo script è invocato da directory diverse)
-    if str(base_dir) not in sys.path:
-        sys.path.insert(0, str(base_dir))
+    package_dir = str(base_dir)
+    project_root = str(base_dir.parent)
+    if package_dir not in sys.path:
+        sys.path.insert(0, package_dir)
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
 
     # If not provided, point ENV_FILE to one level above `blog_manager` (project root)
     # This allows running `python manage.py <cmd>` from the package directory without

@@ -230,6 +230,16 @@ class Command(BaseCommand):
                         continue
 
                     fm, body = sync_parser.split_front_matter(content)
+                    # Ensure non-empty content: prefer body, then common front-matter fields, then a placeholder
+                    fallback_body = None
+                    if isinstance(fm, dict):
+                        fallback_body = fm.get("description") or fm.get("excerpt") or fm.get("summary")
+                    if not (body and body.strip()):
+                        body = (fallback_body or "").strip()
+                    if not (body and body.strip()):
+                        # use title as a minimal placeholder to satisfy model validation
+                        title_fallback = (fm.get("title") or os.path.splitext(os.path.basename(rel_path))[0].split("-", 1)[-1])
+                        body = f"# {title_fallback}\n\n(Imported without body)"
                     h = sync_parser.compute_exported_hash(fm, body)
                     # Match order: repo_path exact -> exported_hash (fallback) -> slug
                     slug = fm.get("slug") or os.path.splitext(os.path.basename(rel_path))[0].split("-", 1)[-1]
@@ -255,7 +265,7 @@ class Command(BaseCommand):
                             if db_hash != h:
                                 site_report["updated"].append({"path": rel_path, "hash": h, "post_id": existing.pk})
                                 if apply_changes:
-                                    Post.objects.filter(pk=existing.pk).update(content=body or "", exported_hash=h, last_exported_at=timezone.now(), repo_path=rel_path)
+                                    Post.objects.filter(pk=existing.pk).update(content=body, exported_hash=h, last_exported_at=timezone.now(), repo_path=rel_path)
                             else:
                                 site_report["unchanged"].append({"path": rel_path, "hash": h, "post_id": existing.pk})
                             continue
@@ -265,7 +275,7 @@ class Command(BaseCommand):
                         self.stdout.write(self.style.SUCCESS(f"  Created planned: {rel_path}"))
                         if apply_changes:
                             from blog.models import Author
-                            p = Post(site=site, title=title, slug=slug, content=body or "", exported_hash=h, repo_path=rel_path)
+                            p = Post(site=site, title=title, slug=slug, content=body, exported_hash=h, repo_path=rel_path)
                             assigned = False
                             if author_name:
                                 a = Author.objects.filter(name=author_name).first() or Author.objects.filter(slug=author_name).first()
@@ -318,9 +328,26 @@ class Command(BaseCommand):
                             self.stdout.write(self.style.WARNING(f"  Update planned: {rel_path} -> post {post.pk}"))
                             if apply_changes:
                                 try:
-                                    Post.objects.filter(pk=post.pk).update(content=body or "", exported_hash=h, last_exported_at=timezone.now(), repo_path=rel_path, last_commit_sha=commit_sha or post.last_commit_sha, last_export_path=full_path or post.last_export_path)
+                                    Post.objects.filter(pk=post.pk).update(
+                                        content=body or "",
+                                        exported_hash=h,
+                                        last_exported_at=timezone.now(),
+                                        repo_path=rel_path,
+                                        last_commit_sha=commit_sha or post.last_commit_sha,
+                                        last_export_path=full_path or post.last_export_path,
+                                    )
                                 except Exception:
-                                    Post.objects.filter(pk=post.pk).update(content=body or "", exported_hash=h, last_exported_at=timezone.now(), repo_path=rel_path)
+                                    logger.exception("Failed to update post %s with full metadata, falling back to minimal update", post.pk)
+                                    # attempt a minimal update if the full one fails
+                                    try:
+                                        Post.objects.filter(pk=post.pk).update(
+                                            content=body or "",
+                                            exported_hash=h,
+                                            last_exported_at=timezone.now(),
+                                            repo_path=rel_path,
+                                        )
+                                    except Exception:
+                                        logger.exception("Fallback update also failed for post %s", post.pk)
                             else:
                                 # dry-run: indicate planned update
                                 pass

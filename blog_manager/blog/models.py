@@ -95,9 +95,10 @@ class Site(models.Model):
             base = slugify(self.name) or slugify(self.domain) or f"site{getattr(self,'pk','') or ''}"
             self.slug = base
 
-        # If repo_path not set, attempt to use BLOG_REPO_BASE/<slug> as fallback.
-        # If the directory exists we set repo_path. In development (DEBUG=True)
-        # we will create the directory automatically so local workflow is smooth.
+    # If repo_path not set, attempt to use BLOG_REPO_BASE/<slug> as fallback.
+    # If the directory exists we set repo_path. Try to create the fallback
+    # directory as a best-effort even in non-DEBUG environments so that
+    # automated import/sync operations can proceed on managed hosts.
         try:
             from django.conf import settings
 
@@ -105,14 +106,17 @@ class Site(models.Model):
                 blog_base = getattr(settings, "BLOG_REPO_BASE", None)
                 if blog_base:
                     candidate = os.path.join(blog_base, self.slug)
+                    # If it already exists, use it
                     if os.path.isdir(candidate):
                         self.repo_path = candidate
-                    elif getattr(settings, "DEBUG", False):
+                    else:
+                        # Best-effort create fallback path so imports can write
+                        # into a managed location. Do not raise on failure.
                         try:
                             os.makedirs(candidate, exist_ok=True)
                             self.repo_path = candidate
                         except Exception:
-                            # best-effort only in dev; ignore failures
+                            # ignore creation failures (might be permission issues)
                             pass
         except Exception:
             # if settings not available or any error, continue without setting repo_path
