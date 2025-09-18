@@ -9,12 +9,13 @@ from pathlib import Path
 import environ
 from core.db import build_database_config
 
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
 # Setup environ
 env = environ.Env(DEBUG=(bool, False), EXPORT_ENABLED=(bool, True))
 # Carica .env
-environ.Env.read_env(os.getenv("ENV_FILE", ".env"))
+environ.Env.read_env(os.getenv("ENV_FILE", str(BASE_DIR / ".env")))
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 ANYMAIL = {
     "MAILERSEND_API_TOKEN": env("MAILERSEND_API_TOKEN", default=None),
