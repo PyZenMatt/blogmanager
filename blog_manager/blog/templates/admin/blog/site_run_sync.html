@@ -9,15 +9,30 @@
   <p><button type="submit" class="default">Run</button></p>
 </form>
 {% if output %}
-<h2>Output</h2>
-<pre style="white-space: pre-wrap;">{{ output }}</pre>
+<h2>Run Status</h2>
+<div id="run-status">{{ output }}</div>
 {% endif %}
-{% if audits %}
-<h2>Recent ExportAudits</h2>
-<ul>
-{% for a in audits %}
-  <li>{{ a.created_at }} - {{ a.action }} - {{ a.summary|default:"-" }}</li>
-{% endfor %}
-</ul>
-{% endif %}
+
+<h2>Live Log</h2>
+<pre id="live-log" style="height: 480px; overflow: auto; background: #111; color: #ddd; padding: 8px; white-space: pre-wrap; font-family: monospace; border-radius:4px;">{% if log_content %}{{ log_content }}{% else %}No log yet.{% endif %}</pre>
+
+<script>
+// Poll the tail endpoint every 2s
+function pollLog(){
+  const pre = document.getElementById('live-log');
+  const tailUrl = window.location.pathname.replace(/\/run_sync\/$/, '/run_sync/tail/') ;
+  fetch(tailUrl)
+    .then(r=>r.json())
+    .then(j=>{
+      if(j.status==='ok'){
+        pre.textContent = j.log;
+        pre.scrollTop = pre.scrollHeight;
+      }
+    }).catch(()=>{});
+}
+setInterval(pollLog, 2000);
+// initial fetch
+pollLog();
+</script>
+{# Recent ExportAudits removed from this view (logs shown live) #}
 {% endblock %}
