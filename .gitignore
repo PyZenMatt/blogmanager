@@ -85,3 +85,5 @@ env/
 
 \.env
 \.env.prod
+.env
+.env.local
