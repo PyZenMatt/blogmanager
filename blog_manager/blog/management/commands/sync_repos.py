@@ -49,7 +49,87 @@ class Command(BaseCommand):
         run_id = timezone.now().strftime("%Y%m%d%H%M%S")
         report = {"run_id": run_id, "sites": {}}
         mode_text = "dry-run" if dry else ("apply" if apply_changes else "dry-run")
-        self.stdout.write(self.style.NOTICE(f"Starting sync run {run_id} mode={mode_text}"))
+
+        # Prepare a logfile. If caller sets SYNC_LOG_PATH env var we'll use it (allow admin UI to tail it)
+        logs_dir = os.path.join(report_path, "logs")
+        os.makedirs(logs_dir, exist_ok=True)
+        env_log_path = os.getenv("SYNC_LOG_PATH")
+        if env_log_path:
+            log_path = env_log_path
+        else:
+            log_path = os.path.join(logs_dir, f"sync-{run_id}.log")
+
+        # Dual writer so all self.stdout.write(...) also goes into the logfile
+        class _DualStdout:
+            def __init__(self, primary, fh):
+                self.primary = primary
+                self.fh = fh
+
+            def write(self, s):
+                try:
+                    prefix = timezone.now().isoformat() + " "
+                except Exception:
+                    prefix = ""
+                # ensure s is a str
+                try:
+                    s_text = str(s)
+                except Exception:
+                    s_text = ""
+                out_line = f"{prefix}{s_text}"
+                try:
+                    if self.primary:
+                        self.primary.write(out_line)
+                except Exception:
+                    pass
+                try:
+                    if self.fh:
+                        self.fh.write(out_line + ("\n" if not out_line.endswith("\n") else ""))
+                        self.fh.flush()
+                except Exception:
+                    pass
+
+            def flush(self):
+                try:
+                    if self.primary:
+                        self.primary.flush()
+                except Exception:
+                    pass
+                try:
+                    if self.fh:
+                        self.fh.flush()
+                except Exception:
+                    pass
+
+        # open log file and wrap stdout
+        file_handler = None
+        root_handler = None
+        orig_stdout = None
+        try:
+            fh = open(log_path, "a", encoding="utf-8")
+        except Exception:
+            fh = None
+        if fh:
+            # attach a file handler to module logger so logger.exception/.. go into the same file
+            try:
+                file_handler = logging.FileHandler(log_path, encoding="utf-8")
+                file_handler.setLevel(logging.DEBUG)
+                fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+                file_handler.setFormatter(fmt)
+                logger.addHandler(file_handler)
+                # also attach to root logger to be broader
+                root = logging.getLogger()
+                root.addHandler(file_handler)
+                root_handler = file_handler
+            except Exception:
+                file_handler = None
+                root_handler = None
+            orig_stdout = self.stdout
+            self.stdout = _DualStdout(orig_stdout, fh)
+
+        self.stdout.write(self.style.NOTICE(f"Starting sync run {run_id} mode={mode_text}; log={log_path}"))
+
+        # Ensure we restore stdout/handlers and close file at the end of the command
+        cleanup_required = bool(fh)
 
         for site in qs:
             self.stdout.write(self.style.NOTICE(f"Processing site {site.slug} (mode={mode_text})"))
@@ -246,7 +326,16 @@ class Command(BaseCommand):
                                 pass
                         else:
                             site_report["unchanged"].append({"path": rel_path, "hash": h, "post_id": post.pk})
-                            self.stdout.write(self.style.NOTICE(f"  Unchanged: {rel_path} (post {post.pk})"))
+                            # If content is identical but repo_path is missing or different, allow apply to associate it
+                            try:
+                                self.stdout.write(self.style.NOTICE(f"  Unchanged: {rel_path} (post {post.pk})"))
+                                if apply_changes:
+                                    # If post has no repo_path or differs from current rel_path, set it so mapping is recovered
+                                    if (not post.repo_path) or (post.repo_path != rel_path):
+                                        Post.objects.filter(pk=post.pk).update(repo_path=rel_path, last_export_path=(full_path or post.last_export_path), last_commit_sha=(commit_sha or post.last_commit_sha))
+                                        self.stdout.write(self.style.SUCCESS(f"  Associated repo path: {rel_path} -> post {post.pk}"))
+                            except Exception:
+                                logger.exception("Failed to associate repo_path for post %s", post.pk)
                         # mark processed to avoid reporting duplicates if the same path appears multiple times
                         processed_paths.add(rel_path)
 
@@ -395,9 +484,16 @@ class Command(BaseCommand):
                         if apply_changes:
                             # update metadata and content safely using update()
                             Post.objects.filter(pk=post.pk).update(content=body or "", exported_hash=h, last_exported_at=timezone.now(), repo_path=rel_path)
-                    else:
-                        site_report["unchanged"].append({"path": rel_path, "hash": h, "post_id": post.pk})
-                        self.stdout.write(self.style.NOTICE(f"  Unchanged: {rel_path} (post {post.pk})"))
+                        else:
+                            site_report["unchanged"].append({"path": rel_path, "hash": h, "post_id": post.pk})
+                            try:
+                                self.stdout.write(self.style.NOTICE(f"  Unchanged: {rel_path} (post {post.pk})"))
+                                if apply_changes:
+                                    if (not post.repo_path) or (post.repo_path != rel_path):
+                                        Post.objects.filter(pk=post.pk).update(repo_path=rel_path, last_export_path=rel_path)
+                                        self.stdout.write(self.style.SUCCESS(f"  Associated repo path: {rel_path} -> post {post.pk}"))
+                            except Exception:
+                                logger.exception("Failed to associate repo_path for post %s", post.pk)
 
             report["sites"][site.slug] = site_report
             # simple output summary per site
@@ -487,3 +583,27 @@ class Command(BaseCommand):
                 ExportAudit.objects.create(run_id=run_id, action=f"delete:{delete_mode}", site=None, summary={"pks": pks})
             except Exception:
                 logger.exception("Unable to write ExportAudit record for delete")
+
+        # cleanup logfile and logging handlers
+        try:
+            if fh:
+                try:
+                    # restore original stdout wrapper
+                    if 'orig_stdout' in locals():
+                        self.stdout = orig_stdout
+                except Exception:
+                    pass
+                try:
+                    fh.close()
+                except Exception:
+                    pass
+                try:
+                    root = logging.getLogger()
+                    if root_handler:
+                        root.removeHandler(root_handler)
+                    if file_handler:
+                        logger.removeHandler(file_handler)
+                except Exception:
+                    pass
+        except Exception:
+            pass

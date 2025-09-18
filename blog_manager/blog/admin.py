@@ -5,6 +5,7 @@ from django.conf import settings
 from django.db import transaction
 import logging
 import threading
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +100,7 @@ class SiteAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom = [
             path('<path:object_id>/run_sync/', self.admin_site.admin_view(self.run_sync_view), name='blog_site_run_sync'),
+            path('<path:object_id>/run_sync/tail/', self.admin_site.admin_view(self.tail_sync_log), name='blog_site_run_sync_tail'),
         ]
         return custom + urls
 
@@ -110,25 +112,75 @@ class SiteAdmin(admin.ModelAdmin):
         site = Site.objects.get(pk=object_id)
         output = ""
         audits = []
+        log_content = None
         if request.method == 'POST':
             mode = request.POST.get('mode')
-            out = StringIO()
+            # prepare a per-run log and tell sync_repos to write there so we can tail it
+            logs_dir = os.path.join('reports', 'logs')
+            os.makedirs(logs_dir, exist_ok=True)
+            run_id = timezone.now().strftime('%Y%m%d%H%M%S')
+            log_path = os.path.join(logs_dir, f'sync-{site.slug}-{run_id}.log')
+            # set env var for the subprocess (call_command runs in process, so set env directly)
+            old_env = dict(os.environ)
+            os.environ['SYNC_LOG_PATH'] = log_path
+            # Run sync in background thread so the admin page can poll the logfile
+            def _runner(m=mode, lp=log_path):
+                try:
+                    out = StringIO()
+                    if m == 'apply':
+                        call_command('sync_repos', '--apply', '--sites', site.slug, stdout=out)
+                    else:
+                        call_command('sync_repos', '--dry-run', '--sites', site.slug, stdout=out)
+                except Exception:
+                    logger.exception('Background sync run failed for site %s', site.slug)
+                finally:
+                    # restore env for safety
+                    os.environ.clear()
+                    os.environ.update(old_env)
+
+            t = threading.Thread(target=_runner, daemon=True)
+            t.start()
+            output = 'Background sync started; use the live log below to follow progress.'
+            # initial attempt to read any existing content
             try:
-                if mode == 'apply':
-                    call_command('sync_repos', '--apply', '--sites', site.slug, stdout=out)
-                else:
-                    call_command('sync_repos', '--dry-run', '--sites', site.slug, stdout=out)
-                output = out.getvalue()
-            except Exception as e:
-                output = str(e)
+                with open(log_path, 'r', encoding='utf-8') as lf:
+                    log_content = lf.read()
+            except Exception:
+                log_content = None
 
-        # Load latest ExportAudit for site (always available for GET and POST)
-        try:
-            audits = list(ExportAudit.objects.filter(site=site).order_by('-created_at')[:5])
-        except Exception:
-            audits = []
+        # Return template (ExportAudit list intentionally omitted; logs are shown live)
+        return render(request, 'admin/blog/site_run_sync.html', {'site': site, 'output': output, 'log_content': log_content})
 
-        return render(request, 'admin/blog/site_run_sync.html', {'site': site, 'output': output, 'audits': audits})
+    def tail_sync_log(self, request, object_id):
+        """Return the tail of the current sync log for the site run. Query param `path` may specify a log path; otherwise tries to find latest log for the site."""
+        from django.http import JsonResponse
+
+        site = Site.objects.get(pk=object_id)
+        log_path = request.GET.get('path')
+        if not log_path:
+            # find latest log file for site in reports/logs
+            logs_dir = os.path.join('reports', 'logs')
+            try:
+                files = [f for f in os.listdir(logs_dir) if f.startswith(f'sync-{site.slug}-')]
+                files.sort()
+                if files:
+                    log_path = os.path.join(logs_dir, files[-1])
+            except Exception:
+                log_path = None
+
+        tail = ''
+        status = 'missing'
+        if log_path and os.path.exists(log_path):
+            try:
+                with open(log_path, 'r', encoding='utf-8') as lf:
+                    data = lf.read()
+                tail = data[-32768:]
+                status = 'ok'
+            except Exception:
+                tail = ''
+                status = 'error'
+
+        return JsonResponse({'status': status, 'log': tail})
 
 
 
