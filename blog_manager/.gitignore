@@ -4,92 +4,52 @@
 *.pot
 *.pyc
 __pycache__/
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+
+# Django
+*.log
 db.sqlite3
-/static/
-/media/
 *.sqlite3
 *.db
-*.pyo
-*.env
-*.env
+/static/
+/media/
+
+# Environment files (keep example files committed)
 .env
 !.env.example
 
-# Python
-*.py[cod]
-*.so
-*.egg
-*.egg-info/
-dist/
-
-.eggs/
-*.manifest
-*.spec
-pip-log.txt
-pip-delete-this-directory.txt
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
-
-# Virtualenv
+# Virtualenvs
 venv/
+.venv/
 ENV/
 
-.venv/
-
-# VSCode
+# Editor / OS
 .vscode/
-
-# MacOS
 .DS_Store
-
-# Others
-*.swp
-*.swo
+Thumbs.db
 .idea/
+
+# Tests / coverage
+.tox/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node
+node_modules/
+
+# Misc
+reports/
+uploads/
+scripts/*.log
 
 # Secrets
 secrets.json
 secrets.env
 
-# Node
-node_modules/
-
-# System
-Thumbs.db
-
-# Test
-*.test
-
-# Misc
-uploads/
-
-# Reports
-reports/
-
-#jekyll Tests
-jekyll-test
-
-Intru
-
-
-# Ignore scripts output
-scripts/*.log
-
-__pycache__/
-*.py[cod]
-*.pyo
-*.egg-info/
-.venv/
-venv/
-env/
-
-\.env
-\.env.prod
+# Jekyll tests
+jekyll-test/
+*.swo
