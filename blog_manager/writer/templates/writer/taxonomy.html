@@ -426,9 +426,11 @@
             collapseWrap.id = collapseId;
             // subclusters
             (catObj.subclusters || []).forEach(sub => {
+                const sname = (sub && sub.name) ? String(sub.name).trim() : '';
+                if (!sname || sname === '(no-subcluster)') return; // skip placeholder
                 const subHeader = document.createElement('div');
                 subHeader.className = 'fw-semibold mt-2';
-                subHeader.textContent = sub.name;
+                subHeader.textContent = sname;
                 collapseWrap.appendChild(subHeader);
                 // omit article examples list for a cleaner taxonomy UI
             });
