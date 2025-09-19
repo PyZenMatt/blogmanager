@@ -21,6 +21,11 @@ from django.urls import include, path
 from django.views.generic import RedirectView
 from django.conf import settings
 from rest_framework.routers import DefaultRouter
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularRedocView,
+    SpectacularSwaggerView,
+)
 
 from django.http import JsonResponse
 
@@ -45,6 +50,18 @@ urlpatterns = [
     # Expose /api/sites/ (list/create) and /api/sites/<id>/ via DRF router
     path("api/", include((router.urls, "api"), namespace="api")),
     path("api/health/", lambda r: JsonResponse({"ok": True}, status=200)),
+    # OpenAPI schema + docs (only enabled in DEBUG by default)
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path(
+        "api/docs/swagger/",
+        SpectacularSwaggerView.as_view(url_name="schema"),
+        name="swagger-ui",
+    ),
+    path(
+        "api/docs/redoc/",
+        SpectacularRedocView.as_view(url_name="schema"),
+        name="redoc",
+    ),
     path("writer/", include("writer.urls", namespace="writer")),
     path("favicon.ico", RedirectView.as_view(url=settings.STATIC_URL + "favicon.ico", permanent=False)),
 ]

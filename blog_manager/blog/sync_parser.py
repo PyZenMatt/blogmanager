@@ -1,23 +1,30 @@
 import hashlib
 import os
 from typing import Tuple, Dict, Any
+import re
 import yaml
 
 
 def split_front_matter(content: str) -> Tuple[Dict[str, Any], str]:
     """Parse YAML front matter using PyYAML. Returns (fm_dict, body).
     If no front matter present returns ({}, content).
+
+    This function is permissive: it accepts optional leading whitespace/newlines
+    before the initial '---' and extracts the first YAML block delimited by '---'.
     """
-    if content.startswith("---"):
-        parts = content.split("---", 2)
-        if len(parts) >= 3:
-            raw_fm = parts[1]
-            body = parts[2].lstrip("\n")
-            try:
-                fm = yaml.safe_load(raw_fm) or {}
-            except Exception:
-                fm = {}
-            return fm, body
+    if not content:
+        return {}, content
+    # Look for a YAML front-matter block near the start (allow leading blank lines)
+    m = re.search(r"^\s*---\s*\n(.*?)\n---\s*\n", content, flags=re.S | re.M)
+    if m:
+        raw_fm = m.group(1)
+        body_start = m.end()
+        body = content[body_start:]
+        try:
+            fm = yaml.safe_load(raw_fm) or {}
+        except Exception:
+            fm = {}
+        return fm, body
     return {}, content
 
 

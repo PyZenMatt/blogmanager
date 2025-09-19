@@ -20,3 +20,9 @@ urlpatterns = [
 ]
 
 urlpatterns += router.urls
+
+# taxonomy grouped endpoint
+from .views import TaxonomyView
+urlpatterns += [
+    path('taxonomy/', TaxonomyView.as_view(), name='taxonomy-view'),
+]

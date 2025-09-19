@@ -50,4 +50,8 @@ urlpatterns = [
     path("posts/", views.post_list, name="post_list"),
     path("edit/<int:id>/", views.post_edit, name="post_edit"),
     path("republish/<int:id>/", views.republish, name="republish"),
+    # Mobile preview routes (dev/testing)
+    path("mobile/posts/", views.post_list_mobile, name="post_list_mobile"),
+    path("mobile/new/", views.post_new_mobile, name="post_new_mobile"),
+    path("mobile/edit/<int:id>/", views.post_edit_mobile, name="post_edit_mobile"),
 ]

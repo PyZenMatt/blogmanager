@@ -6,6 +6,32 @@
   <title>Posts · Writer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    /* Make nav actions wrap on small screens */
+    .ms-auto .d-flex { flex-wrap: wrap; gap: .4rem; }
+
+    /* Small-screen table adjustments */
+    @media (max-width: 768px) {
+      /* hide less-important columns: ID, Site, Published, Updated */
+      .table thead th:nth-child(1),
+      .table thead th:nth-child(2),
+      .table thead th:nth-child(5),
+      .table thead th:nth-child(6),
+      .table tbody td:nth-child(1),
+      .table tbody td:nth-child(2),
+      .table tbody td:nth-child(5),
+      .table tbody td:nth-child(6) {
+        display: none !important;
+      }
+
+      /* Make action buttons stack vertically and full-width for easy tapping */
+      .btn-group { display: flex; flex-direction: column; gap: .4rem; }
+      .btn-group .btn { width: 100%; text-align: center; }
+
+      /* Reduce padding for rows */
+      .table td, .table th { padding: .45rem .5rem; }
+    }
+  </style>
 </head>
 <body class="bg-light">
 <nav class="navbar navbar-expand-lg bg-white border-bottom">
@@ -25,6 +51,11 @@
 
 <div class="container py-4">
   <h1 class="h4 mb-3">Lista Post</h1>
+
+  <!-- Mobile: collapsible filters toggle -->
+  <div class="d-md-none mb-2">
+    <button id="toggleFiltersBtn" class="btn btn-sm btn-outline-secondary">Filtri ▾</button>
+  </div>
 
   <form id="filters" class="row g-2 align-items-end mb-3">
     <div class="col-md-3">
@@ -68,11 +99,14 @@
           </tr>
         </thead>
         <tbody id="rows">
-          <tr><td colspan="6" class="text-center p-4">Caricamento…</td></tr>
+          <tr><td colspan="7" class="text-center p-4">Caricamento…</td></tr>
         </tbody>
       </table>
     </div>
   </div>
+
+  <!-- Floating Action Button for New Post (mobile) -->
+  <button id="fabNew" class="btn btn-primary rounded-circle shadow-lg position-fixed d-md-none" style="width:56px;height:56px;right:16px;bottom:20px;z-index:1050">+</button>
 
   <nav class="mt-3" aria-label="pagination">
     <ul class="pagination" id="pager"></ul>
@@ -81,18 +115,74 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-  // CSRF cookie
-  function getCookie(name){const v=`; ${document.cookie}`.split(`; ${name}=`);if(v.length===2)return v.pop().split(';').shift();}
-  const csrftoken = getCookie('csrftoken');
+// Shared API helpers for writer templates (inlined to avoid sandbox/load issues)
+ (function(window){
+  // CSRF helper (reads cookie)
+  function getCookie(name){
+    const v = `; ${document.cookie}`.split(`; ${name}=`);
+    if (v.length === 2) return v.pop().split(';').shift();
+    return null;
+  }
 
+  const CSRF_TOKEN = getCookie('csrftoken');
+
+  // API base paths
+  const API = {
+    POSTS: '/api/blog/posts/',
+    SITES: '/api/sites/',
+    AUTHORS: '/api/blog/authors/',
+    CATEGORIES: '/api/blog/categories/',
+    POSTIMAGES: '/api/blog/postimages/',
+  };
+
+  // Fetch wrapper that includes credentials and CSRF when needed
+  async function apiFetch(path, opts = {}){
+    const init = Object.assign({ credentials: 'same-origin' }, opts);
+    init.headers = init.headers || {};
+    if (!init.headers['Content-Type'] && !(init.body instanceof FormData)){
+      init.headers['Content-Type'] = 'application/json';
+    }
+    // Add CSRF for unsafe methods
+    const method = (init.method || 'GET').toUpperCase();
+    if (['POST','PUT','PATCH','DELETE'].includes(method)){
+      init.headers['X-CSRFToken'] = CSRF_TOKEN;
+    }
+    return fetch(path, init);
+  }
+
+  window.WriterAPI = {
+    apiFetch,
+    API,
+    CSRF_TOKEN,
+    getCookie
+  };
+})(window);
+</script>
+<script>
+// Provide a safe fallback WriterAPI if the global is missing or blocked
+if (typeof WriterAPI === 'undefined') {
+  window.WriterAPI = window.WriterAPI || (function(){
+    function getCookie(name){ const v = `; ${document.cookie}`.split(`; ${name}=`); if(v.length===2) return v.pop().split(';').shift(); return null; }
+    const CSRF_TOKEN = getCookie('csrftoken');
+    const API = { POSTS: '/api/blog/posts/', SITES: '/api/sites/' };
+    async function apiFetch(path, opts={}){ const init = Object.assign({ credentials: 'same-origin' }, opts); init.headers = init.headers || {}; if(!init.headers['Content-Type'] && !(init.body instanceof FormData)) init.headers['Content-Type']='application/json'; const method = (init.method||'GET').toUpperCase(); if(['POST','PUT','PATCH','DELETE'].includes(method)) init.headers['X-CSRFToken']=CSRF_TOKEN; return fetch(path, init); }
+    return { apiFetch, API, CSRF_TOKEN, getCookie };
+  })();
+}
+</script>
+</script>
+<script>
+  // Use shared WriterAPI helpers
   const state = { next:null, prev:null, page:1 };
 
   const sitesById = {};
   async function loadSites(){
-    const res = await fetch('/api/sites/');
+    const res = await WriterAPI.apiFetch(WriterAPI.API.SITES);
     const data = await res.json();
     const sel = document.getElementById('fSite');
-    (data.results || []).forEach(s=>{
+    // support both paginated ({results: [...]}) and non-paginated ([...]) responses
+    const list = Array.isArray(data) ? data : data.results || [];
+    list.forEach(s=>{
       sitesById[s.id]=s;
       sel.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name || s.title}</option>`);
     });
@@ -125,10 +215,18 @@
       repoLink = `<a class="btn btn-sm btn-outline-secondary" href="${gh}" target="_blank">Repo</a>`;
     }
     return `
-      <div class="btn-group" role="group">
+      <div class="btn-group" role="group" data-post-id="${post.id}">
         <a class="btn btn-sm btn-primary" href="/writer/edit/${post.id}/">Edit</a>
         ${ live ? `<a class="btn btn-sm btn-outline-secondary" href="${live}" target="_blank">Live</a>` : ``}
         ${ repoLink || ``}
+        <button class="btn btn-sm btn-secondary btn-republish" data-id="${post.id}" title="Republish">
+          <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+          <span class="btn-text">Republish</span>
+        </button>
+        <button class="btn btn-sm btn-outline-danger btn-delete" data-id="${post.id}" title="Delete">
+          <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+          <span class="btn-text">Delete</span>
+        </button>
       </div>`;
   }
 
@@ -140,8 +238,13 @@
 
   function render(data){
     const rows = document.getElementById('rows');
+    // Normalize responses: accept both paginated {results: [...]} and plain arrays [...]
+    if (Array.isArray(data)) {
+      data = { results: data, count: data.length, next: null, previous: null };
+    }
+
     if(!data.results || data.results.length===0){
-      rows.innerHTML = `<tr><td colspan="6" class="text-center p-4">Nessun risultato</td></tr>`;
+      rows.innerHTML = `<tr><td colspan="7" class="text-center p-4">Nessun risultato</td></tr>`;
       document.getElementById('pager').innerHTML='';
       return;
     }
@@ -159,6 +262,51 @@
         <td>${actionsCell(p)}</td>
       </tr>
     `).join('');
+
+      // attach action handlers
+      document.querySelectorAll('.btn-republish').forEach(b => {
+        b.addEventListener('click', async (e) => {
+          const id = b.dataset.id;
+          if(!confirm('Republish post #' + id + '?')) return;
+          const spinner = b.querySelector('.spinner-border');
+          const text = b.querySelector('.btn-text');
+          spinner.classList.remove('d-none'); text && (text.style.display='none'); b.disabled = true;
+          try {
+            const res = await WriterAPI.apiFetch(`${WriterAPI.API.POSTS}${id}/publish/`, { method: 'POST' });
+            const data = await res.json();
+            if(!res.ok) throw new Error(JSON.stringify(data));
+            // reload list
+            await loadPosts();
+          } catch(err) {
+            alert('Republish failed: ' + err);
+          } finally {
+            spinner.classList.add('d-none'); text && (text.style.display='inline'); b.disabled = false;
+          }
+        });
+      });
+
+      document.querySelectorAll('.btn-delete').forEach(b => {
+        b.addEventListener('click', async (e) => {
+          const id = b.dataset.id;
+          if(!confirm('Delete post #' + id + '? This cannot be undone.')) return;
+          const spinner = b.querySelector('.spinner-border');
+          const text = b.querySelector('.btn-text');
+          spinner.classList.remove('d-none'); text && (text.style.display='none'); b.disabled = true;
+          try {
+            const res = await WriterAPI.apiFetch(`${WriterAPI.API.POSTS}${id}/`, { method: 'DELETE' });
+            if(!res.ok) {
+              const body = await res.json().catch(()=>null);
+              throw new Error(JSON.stringify(body) || res.statusText);
+            }
+            // reload list
+            await loadPosts();
+          } catch(err) {
+            alert('Delete failed: ' + err);
+          } finally {
+            spinner.classList.add('d-none'); text && (text.style.display='inline'); b.disabled = false;
+          }
+        });
+      });
 
     // Paginazione (DRF: next/previous URL)
     const pager = document.getElementById('pager');
@@ -188,7 +336,8 @@
     if(status) params.set('status', status);
     if(search) params.set('search', search);
     params.set('ordering', '-published_at');
-    return (baseUrl || '/api/posts/') + (baseUrl && baseUrl.includes('?') ? '&' : '?') + params.toString();
+    const base = baseUrl || WriterAPI.API.POSTS;
+    return base + (base.includes('?') ? '&' : '?') + params.toString();
   }
 
   async function loadPosts(url=null){
@@ -196,7 +345,7 @@
     resBox.innerHTML = '';
     const endpoint = url || buildPostsUrl();
     try {
-      const res = await fetch(endpoint, { credentials: 'same-origin' });
+      const res = await WriterAPI.apiFetch(endpoint);
       const data = await res.json();
       if(!res.ok) throw new Error(JSON.stringify(data));
       render(data);
@@ -205,15 +354,128 @@
     }
   }
 
-  document.getElementById('filters').addEventListener('submit', (e)=>{
-    e.preventDefault();
-    loadPosts(buildPostsUrl('/api/posts/'));
-  });
+  const _filters = document.getElementById('filters');
+  if(_filters){
+    _filters.addEventListener('submit', (e)=>{
+      e.preventDefault();
+      loadPosts(buildPostsUrl());
+    });
+  } else {
+    console.warn('Filters form not found; skipping submit handler');
+  }
+
+  // Add a refresh button to reload current filters
+  const refreshBtn = document.createElement('button');
+  refreshBtn.className = 'btn btn-outline-secondary btn-sm ms-2';
+  refreshBtn.textContent = 'Refresh';
+  refreshBtn.addEventListener('click', (e)=>{ e.preventDefault(); loadPosts(); });
+  const _navActions = document.querySelector('.ms-auto .d-flex');
+  if(_navActions){
+    _navActions.appendChild(refreshBtn);
+  } else {
+    console.warn('Nav actions container not found; refresh button not appended');
+  }
+
+  // Ensure WriterAPI is loaded (some environments may sandbox globals)
+  function waitForWriterAPI(timeout = 2000){
+    return new Promise((resolve,reject)=>{
+      if(window.WriterAPI) return resolve(window.WriterAPI);
+      const int = 50;
+      let waited = 0;
+      const t = setInterval(()=>{
+        if(window.WriterAPI){ clearInterval(t); return resolve(window.WriterAPI); }
+        waited += int;
+        if(waited >= timeout){ clearInterval(t); return reject(new Error('WriterAPI not available')); }
+      }, int);
+    });
+  }
 
   (async function init(){
+    try{
+      await waitForWriterAPI(2000);
+    }catch(err){
+      console.error('WriterAPI missing:', err);
+      const resBox = document.getElementById('result');
+      resBox.innerHTML = `<div class="alert alert-warning">Impossibile caricare l'interfaccia: risorsa client mancante (WriterAPI). Ricarica la pagina o controlla la console.</div>`;
+      return;
+    }
     await loadSites();
     await loadPosts();
+    // Setup mobile UI
+    const toggleBtn = document.getElementById('toggleFiltersBtn');
+    if(toggleBtn){
+      toggleBtn.addEventListener('click', (e)=>{
+        e.preventDefault();
+        const f = document.getElementById('filters');
+        if(!f) return;
+        f.classList.toggle('d-none');
+      });
+    }
+    const fab = document.getElementById('fabNew');
+    if(fab){ fab.addEventListener('click', ()=> window.location.href = '{% url "writer:post_new" %}'); }
   })();
+
+  // Card view helper: on small screens convert rows to stacked cards
+  function renderAsCards(data){
+    const rows = document.getElementById('rows');
+    if(!rows) return;
+    if(!Array.isArray(data.results)) data = Array.isArray(data) ? { results: data } : data;
+    rows.innerHTML = '';
+    const list = data.results || [];
+    if(list.length===0){ rows.innerHTML = `<tr><td colspan="7" class="text-center p-4">Nessun risultato</td></tr>`; return; }
+    list.forEach(p=>{
+      const card = document.createElement('tr');
+      card.innerHTML = `
+        <td colspan="7">
+          <div class="card mb-2">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start">
+                <div>
+                  <div class="fw-semibold">${p.title||'-'}</div>
+                  <div class="small text-muted">${p.slug||''}</div>
+                  <div class="small text-muted">${formatDate(p.published_at)} • ${badgeStatus(p.status)}</div>
+                </div>
+                <div>
+                  <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">Azioni</button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                      <li><a class="dropdown-item" href="/writer/edit/${p.id}/">Edit</a></li>
+                      ${p.canonical_url?`<li><a class="dropdown-item" target="_blank" href="${p.canonical_url}">Live</a></li>`:''}
+                      <li><a class="dropdown-item btn-republish" data-id="${p.id}" href="#">Republish</a></li>
+                      <li><a class="dropdown-item btn-delete text-danger" data-id="${p.id}" href="#">Delete</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </td>
+      `;
+      rows.appendChild(card);
+    });
+
+    // attach handlers for card actions
+    rows.querySelectorAll('.btn-republish').forEach(a=> a.addEventListener('click', async (e)=>{
+      e.preventDefault(); if(!confirm('Republish post #' + a.dataset.id + '?')) return;
+      try{ const res = await WriterAPI.apiFetch(`${WriterAPI.API.POSTS}${a.dataset.id}/publish/`, { method:'POST' }); const d = await res.json(); if(!res.ok) throw new Error(JSON.stringify(d)); await loadPosts(); }catch(err){ alert('Republish failed: '+err); }
+    }));
+    rows.querySelectorAll('.btn-delete').forEach(a=> a.addEventListener('click', async (e)=>{
+      e.preventDefault(); if(!confirm('Delete post #' + a.dataset.id + '? This cannot be undone.')) return;
+      try{ const res = await WriterAPI.apiFetch(`${WriterAPI.API.POSTS}${a.dataset.id}/`, { method:'DELETE' }); if(!res.ok){ const b = await res.json().catch(()=>null); throw new Error(JSON.stringify(b)||res.statusText); } await loadPosts(); }catch(err){ alert('Delete failed: '+err); }
+    }));
+  }
+
+  // Detect small viewport and switch rendering
+  const mq = window.matchMedia('(max-width:768px)');
+  function handleViewportChange(){
+    if(mq.matches){
+      // override render to cards
+      const originalRender = render;
+      render = function(data){ renderAsCards(data); };
+    }
+  }
+  handleViewportChange();
+  mq.addEventListener('change', handleViewportChange);
 </script>
 </body>
 </html>

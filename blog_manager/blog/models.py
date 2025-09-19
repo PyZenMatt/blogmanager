@@ -239,7 +239,7 @@ class Author(models.Model):
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="authors")
     name = models.CharField(max_length=100)
     bio = models.TextField(blank=True)
-    slug = models.SlugField(unique=True)
+    slug = models.SlugField()
     meta_title = models.CharField(max_length=70, blank=True)
     meta_description = models.CharField(max_length=180, blank=True)
 
@@ -248,6 +248,10 @@ class Author(models.Model):
 
     class Meta:
         ordering = ["id"]
+        unique_together = (("site", "slug"),)
+        indexes = [
+            models.Index(fields=["site", "slug"]),
+        ]
 
 
 class Post(models.Model):
@@ -397,7 +401,32 @@ class Post(models.Model):
             if repo_path and not os.path.isdir(repo_path):
                 raise ValidationError({"site": f"repo_path inesistente: {repo_path}"})
             if (not repo_path) and fallback and not os.path.isdir(fallback):
-                raise ValidationError({"site": "Configura repo_path o crea directory fallback BLOG_REPO_BASE/<slug>."})
+                # Best-effort: try to create the fallback directory so sync can proceed.
+                try:
+                    os.makedirs(fallback, exist_ok=True)
+                except Exception as e:
+                    import logging
+
+                    logging.getLogger(__name__).warning(
+                        "Could not create fallback repo path %s: %s", fallback, e
+                    )
+                    raise ValidationError({
+                        "site": "Configura repo_path o crea directory fallback BLOG_REPO_BASE/<slug>."
+                    })
+
+                # If creation succeeded, persist it on the site (best-effort)
+                try:
+                    site.repo_path = fallback
+                    site.save()
+                except Exception:
+                    # ignore persistence failures; directory exists and that's sufficient
+                    pass
+
+                # final check: if still not a directory, raise
+                if not os.path.isdir(fallback):
+                    raise ValidationError({
+                        "site": "Configura repo_path o crea directory fallback BLOG_REPO_BASE/<slug>."
+                    })
 
     # imports now at top-level
 

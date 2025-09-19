@@ -13,6 +13,7 @@
   </div>
 </nav>
 <div id="result"></div>
+<div id="post-meta" data-post-id="{{ post_id }}" style="display:none"></div>
 <div class="card shadow-sm">
   <div class="card-body">
     <h1 class="h4 mb-4">Modifica post</h1>
@@ -40,7 +41,9 @@
         </div>
         <div class="col-md-12">
           <label class="form-label">Body</label>
-          <textarea name="body" id="body" class="form-control" rows="10" required></textarea>
+          <div class="editor-fixed">
+            <textarea name="body" id="body" class="form-control" rows="10" required></textarea>
+          </div>
         </div>
   <!-- SEO/meta fields removed: body and core fields only -->
       </div>
@@ -54,18 +57,61 @@
 </div>
 <script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  /* Responsive editor: full-width on small screens, constrained on large screens */
+  .editor-fixed { width: 100%; max-width: 1000px; margin: 0 auto; }
+  .editor-fixed textarea, .editor-fixed .EasyMDEContainer, .editor-fixed .CodeMirror, .editor-fixed .editor-toolbar {
+    width: 100% !important; max-width: 100% !important; box-sizing: border-box;
+  }
+  .editor-fixed .CodeMirror { height: 500px !important; max-height: 500px !important; }
+  .editor-fixed .CodeMirror-scroll { overflow: auto !important; }
+  textarea#body { resize: vertical; }
+
+  /* Buttons and layout tweaks for small screens */
+  @media (max-width: 576px) {
+    .editor-fixed { padding: 0 12px; }
+    /* Stack action buttons and make them full-width for easier tapping */
+    .mt-4 { display: flex; flex-direction: column; gap: 0.5rem; }
+    .mt-4 .btn { width: 100%; }
+    /* Make the preview card full-width */
+    #previewAreaEdit { margin-left: 0 !important; margin-right: 0 !important; }
+  }
+</style>
+</style>
+<script>
+// Minimal WriterAPI fallback in case the global helper didn't load
+if (typeof WriterAPI === 'undefined') {
+  window.WriterAPI = {
+    API: {
+      POSTS: '/api/blog/posts/',
+      SITES: '/api/sites/',
+      AUTHORS: '/api/blog/authors/',
+    },
+    async apiFetch(url, opts={}){
+      const defaultHeaders = {};
+      if (opts && opts.body && !(opts.headers && opts.headers['Content-Type'])) {
+        defaultHeaders['Content-Type'] = 'application/json';
+      }
+      const method = (opts && opts.method) ? opts.method.toUpperCase() : 'GET';
+      if (!['GET','HEAD','OPTIONS'].includes(method)) {
+        const csr = (function getCookie(name){const v=`; ${document.cookie}`.split(`; ${name}=`);if(v.length===2)return v.pop().split(';').shift();})('csrftoken');
+        if (csr) defaultHeaders['X-CSRFToken'] = csr;
+      }
+      const headers = Object.assign({}, defaultHeaders, opts.headers || {});
+      return fetch(url, Object.assign({}, opts, { headers }));
+    }
+  };
+}
+</script>
 <script>
 // Set as Draft logic
 document.getElementById('draftBtn').addEventListener('click', async function() {
   const resBox = document.getElementById('result');
   resBox.innerHTML = '';
   try {
-    const res = await fetch(`/api/blog/posts/${postId}/`, {
+    const res = await WriterAPI.apiFetch(`${WriterAPI.API.POSTS}${postId}/`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getCookie('csrftoken'),
-      },
       body: JSON.stringify({ status: 'draft', is_published: false })
     });
     const data = await res.json();
@@ -76,108 +122,199 @@ document.getElementById('draftBtn').addEventListener('click', async function() {
     resBox.innerHTML = `<div class="alert alert-danger">Errore: ${e}</div>`;
   }
 });
-const postId = window.location.pathname.split('/').filter(Boolean).pop();
+// Robust postId extraction: find a numeric segment in the path (e.g. /writer/posts/123/edit/)
+function extractPostId() {
+  const meta = document.getElementById('post-meta');
+  if (meta && meta.dataset && meta.dataset.postId) return meta.dataset.postId;
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    if (/^\d+$/.test(p)) return p;
+  }
+  return parts.pop();
+}
+const postId = extractPostId();
 let easyMDE;
 async function loadPost() {
-  const res = await fetch(`/api/blog/posts/${postId}/`);
-  const data = await res.json();
-  document.getElementById('title').value = data.title;
-  document.getElementById('slug').value = data.slug;
-  document.getElementById('body').value = data.body;
-  // ...popola altri campi...
-    easyMDE = new EasyMDE({ element: document.getElementById('body') });
+  const resultBox = document.getElementById('result');
+  try {
+    const res = await WriterAPI.apiFetch(`${WriterAPI.API.POSTS}${postId}/`);
+    let data = null;
+    try { data = await res.json(); } catch (e) { data = null; }
+    console.debug('loadPost response', res.status, data);
+    if (!res.ok) {
+      resultBox.innerHTML = `<div class="alert alert-danger">Errore caricamento post: ${res.status}</div>`;
+      return;
+    }
+
+    document.getElementById('title').value = data.title || '';
+    document.getElementById('slug').value = data.slug || '';
+
+    // set selects (if option missing, insert fallback option)
+    const siteSel = document.getElementById('siteSelect');
+    if (siteSel && data.site !== undefined && data.site !== null) {
+      const v = String(data.site);
+      if (!siteSel.querySelector(`option[value="${v}"]`)) {
+        siteSel.insertAdjacentHTML('beforeend', `<option value="${v}">Site ${v}</option>`);
+      }
+      siteSel.value = v;
+    }
+    const authorSel = document.getElementById('authorSelect');
+    if (authorSel && data.author !== undefined && data.author !== null) {
+      const v = String(data.author);
+      if (!authorSel.querySelector(`option[value="${v}"]`)) {
+        authorSel.insertAdjacentHTML('beforeend', `<option value="${v}">Author ${v}</option>`);
+      }
+      authorSel.value = v;
+    }
+
+    // set categories if present
+    if (Array.isArray(data.categories) && data.categories.length) {
+      const catSel = document.getElementById('catSelect');
+      if (catSel) {
+        const vals = data.categories.map(c => String(c));
+        Array.from(catSel.options).forEach(o => { o.selected = vals.includes(o.value); });
+      }
+    }
+
+    // status
+    const statusEl = document.querySelector('[name="status"]');
+    if (statusEl && data.status) statusEl.value = data.status;
+
+    // published_at -> datetime-local (simple truncate)
+    if (data.published_at) {
+      const dt = data.published_at.slice(0,16);
+      const pub = document.querySelector('[name="published_at"]');
+      if (pub) pub.value = dt;
+    }
+
+    // cover image
+    const cover = document.querySelector('[name="cover_image_url"]'); if (cover && data.cover_image_url) cover.value = data.cover_image_url || '';
+
+    // body/content
+    const bodyText = data.content || data.body || '';
+    const textarea = document.getElementById('body');
+    if (textarea) textarea.value = bodyText;
+    easyMDE = new EasyMDE({ element: textarea, spellChecker: false, status: false, autosave: { enabled: false } });
+  } catch (err) {
+    console.error('loadPost error', err);
+    resultBox.innerHTML = `<div class="alert alert-danger">Errore di rete durante il caricamento del post.</div>`;
   }
-  loadPost();
+}
+// Autosave & Preview helpers (will be invoked after load)
+const POST_ID = postId;
+const AUTOSAVE_KEY_EDIT = `writer:draft:edit:${POST_ID}`;
+function saveDraftEdit(){
+  try{
+    const payload = {
+      title: document.getElementById('title').value,
+      slug: document.getElementById('slug').value,
+      site: document.getElementById('siteSelect').value,
+      author: document.getElementById('authorSelect').value,
+      body: easyMDE ? easyMDE.value() : document.getElementById('body').value,
+      ts: new Date().toISOString()
+    };
+    localStorage.setItem(AUTOSAVE_KEY_EDIT, JSON.stringify(payload));
+    const s = document.getElementById('autosaveEditStatus'); if(s) s.textContent = 'Autosaved at ' + new Date().toLocaleTimeString();
+  }catch(e){ console.warn('Autosave edit failed', e); }
+}
+function loadDraftEdit(){
+  const raw = localStorage.getItem(AUTOSAVE_KEY_EDIT); if(!raw) return;
+  try{ const d = JSON.parse(raw); if(confirm('Ripristinare bozza locale?')){ document.getElementById('title').value=d.title||''; document.getElementById('slug').value=d.slug||''; if(easyMDE) easyMDE.value(d.body||''); else document.getElementById('body').value = d.body||''; }}catch(e){ console.warn('parse draft edit', e); }
+}
+function setupEditUI(){
+  setInterval(saveDraftEdit, 10000);
+  loadDraftEdit();
+  // Preview button
+  const previewBtn = document.createElement('button'); previewBtn.type='button'; previewBtn.className='btn btn-outline-secondary ms-2'; previewBtn.textContent='Preview';
+  const submitArea = document.querySelector('#post-edit-form .mt-4');
+  if(submitArea){ submitArea.insertBefore(previewBtn, submitArea.children[1] || null); }
+  const previewArea = document.createElement('div'); previewArea.id='previewAreaEdit'; previewArea.className='mt-3 d-none card'; previewArea.innerHTML='<div class="card-body"></div>';
+  if(submitArea && submitArea.parentElement){ submitArea.parentElement.appendChild(previewArea); }
+  previewBtn.addEventListener('click', ()=>{ const area = document.getElementById('previewAreaEdit'); if(area.classList.contains('d-none')){ area.classList.remove('d-none'); area.querySelector('.card-body').innerHTML = marked.parse(easyMDE ? easyMDE.value() : document.getElementById('body').value); previewBtn.textContent='Hide Preview'; } else { area.classList.add('d-none'); previewBtn.textContent='Preview'; }});
+  // autosave status
+  const autos = document.createElement('small'); autos.id='autosaveEditStatus'; autos.className='text-muted ms-2'; if(submitArea) submitArea.appendChild(autos);
+}
+
+// Ensure selects are loaded before populating the post and then setup UI
+loadOptions().then(() => loadPost()).then(()=>setupEditUI()).catch(() => { loadPost().then(()=>setupEditUI()); });
 
   // Populate selects (site, author)
   async function loadOptions() {
     const [sites, authors] = await Promise.all([
-      fetch('/api/sites/').then(r=>r.json()),
-      fetch('/api/blog/authors/').then(r=>r.json()),
+      WriterAPI.apiFetch(WriterAPI.API.SITES).then(r=>r.json()),
+      WriterAPI.apiFetch(WriterAPI.API.AUTHORS).then(r=>r.json()),
     ]);
     const siteSel = document.getElementById('siteSelect');
     (sites.results || sites).forEach(s => siteSel.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name || s.title}</option>`));
     const authorSel = document.getElementById('authorSelect');
-    (authors.results || authors).forEach(a => authorSel.insertAdjacentHTML('beforeend', `<option value="${a.id}">${a.name || a.display_name}</option>`));
-  }
-  loadOptions();
-
-  // Republish logic
-  document.getElementById('republishBtn').addEventListener('click', async function() {
-    const resBox = document.getElementById('result');
-    resBox.innerHTML = '';
-    try {
-      const res = await fetch(`/api/blog/posts/${postId}/`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCookie('csrftoken'),
-        },
-        body: JSON.stringify({ status: 'published', is_published: true })
-      });
-      const data = await res.json();
-      if(!res.ok) throw new Error(JSON.stringify(data));
-      resBox.innerHTML = `<div class=\"alert alert-success\">Post ripubblicato!</div>`;
-      loadPost();
-    } catch(e) {
-      resBox.innerHTML = `<div class=\"alert alert-danger\">Errore: ${e}</div>`;
+      (authors.results || authors).forEach(a => authorSel.insertAdjacentHTML('beforeend', `<option value="${a.id}">${a.name || a.display_name}</option>`));
     }
-  });
+
+  // Republish logic (consolidated later)
 
   // CSRF cookie helper
   function getCookie(name){const v=`; ${document.cookie}`.split(`; ${name}=`);if(v.length===2)return v.pop().split(';').shift();}
-
-// Submit PATCH
-const form = document.getElementById('post-edit-form');
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const fd = new FormData(form);
-  const payload = {
-    title: fd.get('title'),
-    slug: fd.get('slug'),
-    site: Number(fd.get('site')),
-    author: Number(fd.get('author')),
-    body: easyMDE.value(),
-    // ...altri campi...
-  };
-  const res = await fetch(`/api/blog/posts/${postId}/`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': '{{ csrf_token }}'
-    },
-    credentials: 'same-origin',
-    body: JSON.stringify(payload)
-  });
-  const resultBox = document.getElementById('result');
-  if (res.ok) {
-    resultBox.innerHTML = '<div class="alert alert-success">Post aggiornato!</div>';
-  } else {
-    let errorMsg = 'Errore salvataggio.';
-    try {
-      const errData = await res.json();
-      if (errData.detail) {
-        errorMsg = errData.detail;
-      } else if (typeof errData === 'string') {
-        errorMsg = errData;
-      } else if (typeof errData === 'object') {
-        errorMsg = Object.values(errData).flat().join('<br>');
-      }
-    } catch {}
-    resultBox.innerHTML = `<div class="alert alert-danger">${errorMsg}</div>`;
+  // Minimal helpers to show field errors like in new-post
+  function setInvalid(name, msg) {
+    const field = document.querySelector(`[name="${name}"]`);
+    if (!field) return;
+    field.classList.add('is-invalid');
+    const fb = field.parentElement.querySelector('.invalid-feedback');
+    if (fb && msg) fb.textContent = msg;
   }
-});
+  function clearInvalid() {
+    document.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
+  }
+
+  // Submit PATCH
+  const form = document.getElementById('post-edit-form');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearInvalid();
+    const fd = new FormData(form);
+    const payload = {
+      title: fd.get('title'),
+      slug: fd.get('slug'),
+      site: Number(fd.get('site')) || null,
+      author: Number(fd.get('author')) || null,
+      content: easyMDE ? easyMDE.value() : document.getElementById('body').value,
+    };
+    const resultBox = document.getElementById('result');
+    resultBox.innerHTML = '';
+    try {
+      const res = await WriterAPI.apiFetch(`${WriterAPI.API.POSTS}${postId}/`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload)
+      });
+      let data = null;
+      try { data = await res.json(); } catch(_) { data = null; }
+      if (res.ok) {
+        resultBox.innerHTML = '<div class="alert alert-success">Post aggiornato!</div>';
+      } else {
+        if (res.status === 400 && data) {
+          Object.entries(data).forEach(([field, messages]) => {
+            setInvalid(field, Array.isArray(messages) ? messages.join(', ') : String(messages));
+          });
+        }
+        let errorMsg = 'Errore salvataggio.';
+        if (data) {
+          if (data.detail) errorMsg = data.detail;
+          else if (typeof data === 'object') errorMsg = Object.values(data).flat().join('<br>');
+          else errorMsg = String(data);
+        }
+        resultBox.innerHTML = `<div class="alert alert-danger">${errorMsg}</div>`;
+      }
+    } catch (err) {
+      resultBox.innerHTML = `<div class="alert alert-danger">Errore di rete: ${err}</div>`;
+    }
+  });
 // Re-publish button
 const republishBtn = document.getElementById('republishBtn');
 republishBtn.addEventListener('click', async () => {
   // PATCH vuoto per forzare re-export
-  const res = await fetch(`/api/blog/posts/${postId}/`, {
+  const res = await WriterAPI.apiFetch(`${WriterAPI.API.POSTS}${postId}/`, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': '{{ csrf_token }}'
-    },
-    credentials: 'same-origin',
     body: JSON.stringify({})
   });
   const resultBox = document.getElementById('result');
@@ -200,3 +337,15 @@ republishBtn.addEventListener('click', async () => {
 });
 </script>
 {% endblock %}
+
+<!-- Mobile bottom action bar for editor -->
+<div id="mobileEditorBarEdit" class="d-md-none" style="position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid rgba(0,0,0,0.06);padding:8px 12px;z-index:1060;display:flex;gap:.5rem;justify-content:space-between;align-items:center;">
+  <button id="mobileSaveEdit" class="btn btn-primary" style="flex:1">Save</button>
+  <button id="mobilePreviewEdit" class="btn btn-outline-secondary" style="flex:1">Preview</button>
+  <button id="mobileDraftEdit" class="btn btn-outline-secondary" style="flex:1">Draft</button>
+</div>
+<script>
+  document.getElementById('mobileSaveEdit')?.addEventListener('click', ()=> document.querySelector('#post-edit-form button[type="submit"]')?.click());
+  document.getElementById('mobilePreviewEdit')?.addEventListener('click', ()=> { document.querySelector('#post-edit-form .btn-outline-secondary')?.click(); });
+  document.getElementById('mobileDraftEdit')?.addEventListener('click', ()=> document.getElementById('draftBtn')?.click());
+</script>

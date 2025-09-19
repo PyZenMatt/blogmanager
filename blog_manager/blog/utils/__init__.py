@@ -1,5 +1,10 @@
 import hashlib
 from typing import Dict, Any
+import re
+import yaml
+from typing import List, Optional
+from django.utils.text import slugify
+from .seo import slugify_title
 
 def build_jekyll_front_matter(post) -> Dict[str, Any]:
 	# Minimale (espandere secondo il vostro schema)
@@ -31,3 +36,128 @@ def render_markdown_for_export(post) -> str:
 def content_hash(post) -> str:
 	data = render_markdown_for_export(post).encode("utf-8")
 	return hashlib.sha256(data).hexdigest()
+
+
+_FM_RE = re.compile(r"^\s*---\s*\n(.*?)\n---\s*\n", flags=re.S | re.M)
+
+
+def extract_frontmatter(text: Optional[str]) -> Dict[str, Any]:
+	if not text:
+		return {}
+	m = _FM_RE.search(text)
+	if not m:
+		return {}
+	try:
+		return yaml.safe_load(m.group(1)) or {}
+	except Exception:
+		return {}
+
+
+def create_categories_from_frontmatter(post, fields: Optional[List[str]] = None, hierarchy: str = "slash") -> List:
+	# import locally to avoid circular import with models
+	from ..models import Category
+
+	if fields is None:
+		fields = ["categories", "cluster"]
+	txt = getattr(post, "content", None) or ""
+	fm = extract_frontmatter(txt)
+	cats = []
+
+	# First, prefer explicit 'categories' or provided fields if present
+	if fm:
+		# Handle special cluster/subcluster shapes
+		cluster_val = fm.get("cluster")
+		subcluster_val = fm.get("subcluster")
+
+		# If 'cluster' exists and is a mapping (dict), interpret as {cluster: [sub,...]}
+		if isinstance(cluster_val, dict):
+			for clu, subs in cluster_val.items():
+				clu = str(clu).strip()
+				if isinstance(subs, (list, tuple)):
+					for s in subs:
+						if s:
+							cats.append(f"{clu}/{str(s).strip()}")
+				elif subs:
+					cats.append(f"{clu}/{str(subs).strip()}")
+				else:
+					cats.append(clu)
+		# If cluster is a list of cluster names
+		elif isinstance(cluster_val, (list, tuple)) and cluster_val:
+			for clu in cluster_val:
+				if clu:
+					cats.append(str(clu).strip())
+		# If cluster is a scalar string
+		elif isinstance(cluster_val, str) and cluster_val.strip():
+			clu = cluster_val.strip()
+			# combine with subcluster if present
+			if subcluster_val:
+				if isinstance(subcluster_val, (list, tuple)):
+					for s in subcluster_val:
+						if s:
+							cats.append(f"{clu}/{str(s).strip()}")
+				else:
+					cats.append(f"{clu}/{str(subcluster_val).strip()}")
+			else:
+				cats.append(clu)
+		# If only subcluster exists (no cluster), treat subcluster as categories
+		elif subcluster_val:
+			if isinstance(subcluster_val, (list, tuple)):
+				for s in subcluster_val:
+					if s:
+						cats.append(str(s).strip())
+			else:
+				cats.append(str(subcluster_val).strip())
+
+		# If still no cats, fall back to generic provided fields (like 'categories')
+		if not cats:
+			vals = []
+			for fld in fields:
+				if fld in fm and fm[fld] is not None:
+					v = fm[fld]
+					if isinstance(v, (list, tuple)) and v:
+						vals.extend([str(x).strip() for x in v if x])
+					else:
+						vals.append(str(v).strip())
+			if vals:
+				# if multiple values, preserve them separately (they may be independent categories)
+				cats.extend(vals if len(vals) > 1 else [vals[0]])
+
+	# fallback: legacy categories line
+	if not cats:
+		m = re.search(r'(?mi)^categories:\s*(.+)$', txt)
+		if m:
+			cats = [s.strip() for s in re.split(r"[,;]\s*", m.group(1)) if s.strip()]
+
+	if not cats:
+		return []
+
+	created_objs = []
+	for raw in cats:
+		if hierarchy == "slash":
+			parts = [p.strip() for p in re.split(r"\s*/\s*", raw) if p.strip()]
+		elif hierarchy == ">":
+			parts = [p.strip() for p in re.split(r"\s*>\s*", raw) if p.strip()]
+		else:
+			parts = [raw.strip()]
+
+		accum = []
+		for i in range(len(parts)):
+			accum.append(parts[i])
+			name = "/".join(accum) if len(accum) > 1 else accum[0]
+			slug = slugify(name.replace("/", "-").replace(">", "-"))
+			defaults = {"name": name}
+			obj, created = Category.objects.get_or_create(site=post.site, slug=slug, defaults=defaults)
+			created_objs.append(obj)
+
+	# assign unique categories to post
+	if created_objs:
+		unique = []
+		seen = set()
+		for o in created_objs:
+			if o and o.pk and o.pk not in seen:
+				unique.append(o)
+				seen.add(o.pk)
+		if unique:
+			post.categories.add(*unique)
+
+	return created_objs

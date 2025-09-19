@@ -1,3 +1,81 @@
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+import re
+import yaml
+from .models import Post, Category
+
+fm_re = re.compile(r'^\s*---\s*\n([\s\S]*?)\n---\s*\n', re.M)
+
+
+def _extract_values_from_fm(fm_text):
+    try:
+        parsed = yaml.safe_load(fm_text) or {}
+    except Exception:
+        parsed = {}
+        for line in (fm_text or '').splitlines():
+            if ':' in line:
+                k, v = line.split(':', 1)
+                parsed[k.strip()] = v.strip()
+    category_vals = []
+    sub_vals = []
+    if isinstance(parsed, dict):
+        c = parsed.get('categories') or parsed.get('category')
+        if c:
+            if isinstance(c, list):
+                category_vals.extend([str(x).strip() for x in c if x])
+            else:
+                category_vals.append(str(c).strip())
+        s = parsed.get('subcluster') or parsed.get('subclusters')
+        if s:
+            if isinstance(s, list):
+                sub_vals.extend([str(x).strip() for x in s if x])
+            else:
+                sub_vals.append(str(s).strip())
+    return category_vals, sub_vals
+
+
+@receiver(post_save, sender=Post)
+def ensure_categories_from_post(sender, instance, created, **kwargs):
+    """Ensure Category rows exist for clusters and cluster/subcluster pairs found in a Post's front-matter.
+
+    This runs on every Post save. It's idempotent and uses get_or_create.
+    """
+    raw = instance.content or getattr(instance, 'body', '') or ''
+    m = fm_re.search(raw)
+    if not m:
+        return
+    fm_text = m.group(1)
+    cats, subs = _extract_values_from_fm(fm_text)
+    # Fallback: if no categories found, inspect instance.categories M2M (best-effort)
+    if not cats:
+        try:
+            for cat in instance.categories.all():
+                name = cat.name or ''
+                if '/' in name:
+                    cats.append(name.split('/')[0].strip())
+                else:
+                    cats.append(name.strip())
+        except Exception:
+            pass
+
+    if not cats and not subs:
+        return
+
+    if not cats:
+        cats = ['(no-category)']
+    if not subs:
+        subs = ['(no-subcluster)']
+
+    site_id = getattr(instance.site, 'id', instance.site_id)
+
+    for c in cats:
+        name_c = c
+        slug_c = name_c.replace(' ', '-').lower()
+        Category.objects.get_or_create(site_id=site_id, slug=slug_c, defaults={'name': name_c})
+        for su in subs:
+            name = f"{name_c}/{su}" if su and su != '(no-subcluster)' else name_c
+            slug = name.replace(' ', '-').lower()
+            Category.objects.get_or_create(site_id=site_id, slug=slug, defaults={'name': name})
 from contextvars import ContextVar
 from contextlib import suppress
 import logging

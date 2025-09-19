@@ -65,6 +65,11 @@ def post_list(request):
 
 
 @login_required
+def post_list_mobile(request):
+    return render(request, "writer/posts_list.html", {"mobile": True})
+
+
+@login_required
 def republish(request, id: int):
     if request.method != "POST":
         return HttpResponseBadRequest("Invalid method")
@@ -74,3 +79,13 @@ def republish(request, id: int):
     except Exception as e:
         return HttpResponse(f"Publish failed: {e}", status=500)
     return redirect("writer:post_list")
+
+
+@login_required
+def post_new_mobile(request):
+    return render(request, "writer/post_new.html", {"mobile": True})
+
+
+@login_required
+def post_edit_mobile(request, id):
+    return render(request, "writer/post_edit.html", {"post_id": id, "mobile": True})

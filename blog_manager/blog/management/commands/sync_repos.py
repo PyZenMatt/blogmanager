@@ -9,6 +9,7 @@ from blog.signals import _SKIP_EXPORT
 import json
 import os
 import logging
+from blog.utils import create_categories_from_frontmatter
 import subprocess
 import shutil
 from django.core.management import call_command
@@ -275,7 +276,8 @@ class Command(BaseCommand):
                         self.stdout.write(self.style.SUCCESS(f"  Created planned: {rel_path}"))
                         if apply_changes:
                             from blog.models import Author
-                            p = Post(site=site, title=title, slug=slug, content=body, exported_hash=h, repo_path=rel_path)
+                            # Preserve full original content (including front-matter) in Post.content
+                            p = Post(site=site, title=title, slug=slug, content=content or body, exported_hash=h, repo_path=rel_path)
                             assigned = False
                             if author_name:
                                 a = Author.objects.filter(name=author_name).first() or Author.objects.filter(slug=author_name).first()
@@ -320,6 +322,11 @@ class Command(BaseCommand):
                                 p.save()
                             finally:
                                 _SKIP_EXPORT.reset(token)
+                            # create/assign categories from front-matter when importing
+                            try:
+                                create_categories_from_frontmatter(p, fields=["categories", "cluster"], hierarchy="slash")
+                            except Exception:
+                                logger.exception("Failed to create categories from front-matter for post %s", getattr(p, 'pk', None))
                             self.stdout.write(self.style.SUCCESS(f"  Created: {rel_path} (id={p.pk})"))
                     else:
                         db_hash = post.exported_hash or ""
@@ -328,8 +335,9 @@ class Command(BaseCommand):
                             self.stdout.write(self.style.WARNING(f"  Update planned: {rel_path} -> post {post.pk}"))
                             if apply_changes:
                                 try:
+                                    # Update content with full original content (including front-matter)
                                     Post.objects.filter(pk=post.pk).update(
-                                        content=body or "",
+                                        content=content or (body or ""),
                                         exported_hash=h,
                                         last_exported_at=timezone.now(),
                                         repo_path=rel_path,
@@ -341,16 +349,19 @@ class Command(BaseCommand):
                                     # attempt a minimal update if the full one fails
                                     try:
                                         Post.objects.filter(pk=post.pk).update(
-                                            content=body or "",
+                                            content=content or (body or ""),
                                             exported_hash=h,
                                             last_exported_at=timezone.now(),
                                             repo_path=rel_path,
                                         )
                                     except Exception:
                                         logger.exception("Fallback update also failed for post %s", post.pk)
-                            else:
-                                # dry-run: indicate planned update
-                                pass
+                                # After performing update(), refresh and create/assign categories from front-matter
+                                try:
+                                    post.refresh_from_db()
+                                    create_categories_from_frontmatter(post, fields=["categories", "cluster"], hierarchy="slash")
+                                except Exception:
+                                    logger.exception("Failed to create categories from front-matter for updated post %s", getattr(post, 'pk', None))
                         else:
                             site_report["unchanged"].append({"path": rel_path, "hash": h, "post_id": post.pk})
                             # If content is identical but repo_path is missing or different, allow apply to associate it
@@ -361,6 +372,11 @@ class Command(BaseCommand):
                                     if (not post.repo_path) or (post.repo_path != rel_path):
                                         Post.objects.filter(pk=post.pk).update(repo_path=rel_path, last_export_path=(full_path or post.last_export_path), last_commit_sha=(commit_sha or post.last_commit_sha))
                                         self.stdout.write(self.style.SUCCESS(f"  Associated repo path: {rel_path} -> post {post.pk}"))
+                                        try:
+                                            post.refresh_from_db()
+                                            create_categories_from_frontmatter(post, fields=["categories", "cluster"], hierarchy="slash")
+                                        except Exception:
+                                            logger.exception("Failed to create categories from front-matter when associating repo_path for post %s", getattr(post, 'pk', None))
                             except Exception:
                                 logger.exception("Failed to associate repo_path for post %s", post.pk)
                         # mark processed to avoid reporting duplicates if the same path appears multiple times
