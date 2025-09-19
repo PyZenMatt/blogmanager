@@ -29,11 +29,10 @@
       <h3 class="h6">Subclusters</h3>
       <ul>
         {% for s in subcategories %}
-          <li><a href="{% url 'writer:subcluster_page' category.id s.id %}">{{ s.name|slice:":100" }}</a></li>
+          <li><a href="{% url 'writer:subcluster_page' category.id s.id %}">{{ s.name|slice:"":100 }}</a></li>
         {% endfor %}
       </ul>
     </div>
-    {# Articles by subcluster removed: subclusters already listed and linked above #}
   {% elif subcategories and subcategory %}
     <div class="mb-3">
       <h3 class="h6">Other subclusters</h3>
@@ -49,59 +48,21 @@
   <div class="card">
     <div class="card-header">Articles</div>
     <div class="list-group list-group-flush">
-      {% if subcategory %}
-        {% for p in posts %}
-          <div class="list-group-item">
-            <div class="d-flex justify-content-between align-items-center">
-              <div>
-                <div class="fw-semibold">{{ p.title }}</div>
-                <div class="small text-muted">{{ p.slug }}</div>
-              </div>
-              <div>
-                <a class="btn btn-sm btn-primary" href="{% url 'writer:post_edit' p.id %}">Edit</a>
-              </div>
+      {% for p in posts %}
+        <div class="list-group-item">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <div class="fw-semibold">{{ p.title }}</div>
+              <div class="small text-muted">{{ p.slug }}</div>
+            </div>
+            <div>
+              <a class="btn btn-sm btn-primary" href="{% url 'writer:post_edit' p.id %}">Edit</a>
             </div>
           </div>
-        {% empty %}
-          <div class="list-group-item text-muted">No articles</div>
-        {% endfor %}
-      {% else %}
-        {% if total_grouped_count %}
-          {% for s, qs, sub_label in grouped_posts %}
-            <div class="list-group-item">
-              <div class="fw-semibold">{{ sub_label }}</div>
-            </div>
-            {% for p in qs %}
-              <div class="list-group-item ps-4">
-                <div class="d-flex justify-content-between align-items-center">
-                  <div>
-                    <div class="fw-semibold">{{ p.title }}</div>
-                    <div class="small text-muted">{{ p.slug }}</div>
-                  </div>
-                  <div>
-                    <a class="btn btn-sm btn-primary" href="{% url 'writer:post_edit' p.id %}">Edit</a>
-                  </div>
-                </div>
-              </div>
-            {% endfor %}
-          {% endfor %}
-        {% endif %}
-        {% for p in parent_posts %}
-          <div class="list-group-item">
-            <div class="d-flex justify-content-between align-items-center">
-              <div>
-                <div class="fw-semibold">{{ p.title }}</div>
-                <div class="small text-muted">{{ p.slug }}</div>
-              </div>
-              <div>
-                <a class="btn btn-sm btn-primary" href="{% url 'writer:post_edit' p.id %}">Edit</a>
-              </div>
-            </div>
-          </div>
-        {% empty %}
-          <div class="list-group-item text-muted">No articles</div>
-        {% endfor %}
-      {% endif %}
+        </div>
+      {% empty %}
+        <div class="list-group-item text-muted">No articles</div>
+      {% endfor %}
     </div>
   </div>
 
