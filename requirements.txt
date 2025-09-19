@@ -47,3 +47,4 @@ urllib3==2.5.0
 virtualenv==20.33.1
 PyGithub>=1.72
 pytest
+drf-spectacular==0.28.0

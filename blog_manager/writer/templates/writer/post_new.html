@@ -8,6 +8,26 @@
 	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 	<!-- EasyMDE (Markdown WYSIWYG) -->
 	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+
+			<style>
+				/* Responsive editor: full-width on small screens, constrained on large screens */
+				.editor-fixed { width: 100%; max-width: 1000px; margin: 0 auto; }
+				.editor-fixed textarea, .editor-fixed .EasyMDEContainer, .editor-fixed .CodeMirror, .editor-fixed .editor-toolbar {
+					width: 100% !important; max-width: 100% !important; box-sizing: border-box;
+				}
+				/* CodeMirror (EasyMDE) specifics: set fixed height and allow vertical scrolling */
+				.editor-fixed .CodeMirror { height: 500px !important; max-height: 500px !important; }
+				.editor-fixed .CodeMirror-scroll { overflow: auto !important; }
+				/* Ensure textarea fallback can only resize vertically */
+				textarea#body { resize: vertical; }
+
+				@media (max-width: 576px) {
+					.editor-fixed { padding: 0 12px; }
+					.d-flex.align-items-center.gap-2.mt-4 { flex-direction: column !important; }
+					.d-flex.align-items-center.gap-2.mt-4 .btn { width: 100%; }
+					#previewArea { margin-left: 0 !important; margin-right: 0 !important; }
+				}
+			</style>
 </head>
 <body class="bg-light">
 <nav class="navbar navbar-expand-lg bg-white border-bottom">
@@ -87,7 +107,9 @@
 
 					<div class="col-12">
 						<label class="form-label">Body (Markdown)</label>
-						<textarea name="body" id="body" rows="12" required></textarea>
+						<div class="editor-fixed">
+							<textarea name="body" id="body" rows="12" class="form-control" required></textarea>
+						</div>
 						<div class="invalid-feedback">Inserisci il contenuto.</div>
 					</div>
 				</div>
@@ -105,6 +127,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 	// CSRF helper (cookie)
@@ -112,7 +135,8 @@
 		const value = `; ${document.cookie}`; const parts = value.split(`; ${name}=`);
 		if (parts.length === 2) return parts.pop().split(';').shift();
 	}
-	const csrftoken = getCookie('csrftoken');
+		// Use shared helpers
+		const csrftoken = WriterAPI.CSRF_TOKEN;
 
 	// EasyMDE init
 	const easyMDE = new EasyMDE({
@@ -140,10 +164,10 @@
 		const elResult = document.getElementById('result');
 		elResult.innerHTML = '<div class="alert alert-info">Carico dati…</div>';
 		try {
-			const [sites, authors] = await Promise.all([
-				fetch('/api/sites/').then(r=>r.json()),
-				fetch('/api/blog/authors/').then(r=>r.json()),
-			]);
+				const [sites, authors] = await Promise.all([
+					WriterAPI.apiFetch(WriterAPI.API.SITES).then(r=>r.json()),
+					WriterAPI.apiFetch(WriterAPI.API.AUTHORS).then(r=>r.json()),
+				]);
 
 			const siteSel = document.getElementById('siteSelect');
 			(sites.results || sites).forEach(s => siteSel.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name || s.title}</option>`));
@@ -163,12 +187,102 @@
 		const catSel = document.getElementById('catSelect');
 		catSel.innerHTML = '';
 		if (!siteId) return;
-		const res = await fetch(`/api/blog/categories/?site=${siteId}`);
+		const res = await WriterAPI.apiFetch(`${WriterAPI.API.CATEGORIES}?site=${siteId}`);
 		const cats = await res.json();
 		(cats.results || cats).forEach(c => catSel.insertAdjacentHTML('beforeend', `<option value="${c.id}">${c.name || c.title}</option>`));
 	}
 	document.getElementById('siteSelect').addEventListener('change', loadCategoriesForSite);
 	loadOptions();
+
+	// --- Autosave (localStorage) and Preview ---
+	const AUTOSAVE_KEY = 'writer:draft:new';
+
+	function loadDraft(){
+		const raw = localStorage.getItem(AUTOSAVE_KEY);
+		if(!raw) return;
+		try{
+			const d = JSON.parse(raw);
+			if(confirm('Trovata bozza salvata localmente. Ripristinare?')){
+				document.getElementById('title').value = d.title || '';
+				document.getElementById('slug').value = d.slug || '';
+				document.getElementById('siteSelect').value = d.site || '';
+				document.getElementById('authorSelect').value = d.author || '';
+				document.getElementById('cover_image_url').value = d.cover_image_url || '';
+				if(d.categories && d.categories.length){
+					Array.from(document.getElementById('catSelect').options).forEach(o=>{ o.selected = d.categories.includes(Number(o.value)); });
+				}
+				easyMDE.value(d.body || '');
+			}
+		} catch(e){ console.warn('Failed to parse draft', e); }
+	}
+
+	function saveDraft(){
+		try{
+			const payload = {
+				title: document.getElementById('title').value,
+				slug: document.getElementById('slug').value,
+				site: document.getElementById('siteSelect').value,
+				author: document.getElementById('authorSelect').value,
+				categories: Array.from(document.getElementById('catSelect').selectedOptions).map(o=>Number(o.value)),
+				cover_image_url: document.querySelector('[name="cover_image_url"]').value,
+				body: easyMDE.value(),
+				timestamp: new Date().toISOString()
+			};
+			localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(payload));
+			document.getElementById('autosaveStatus').textContent = 'Autosaved at ' + new Date().toLocaleTimeString();
+		} catch(e){ console.warn('Autosave failed', e); }
+	}
+
+	function setupAutosave(){
+		saveDraft();
+		setInterval(saveDraft, 10000);
+	}
+
+	// Preview
+	const previewBtn = document.createElement('button');
+	previewBtn.type = 'button'; previewBtn.id = 'previewBtn'; previewBtn.className = 'btn btn-outline-secondary'; previewBtn.textContent = 'Preview';
+	const submitGroup = document.querySelector('.d-flex.align-items-center');
+	if(submitGroup){ submitGroup.insertBefore(previewBtn, submitGroup.children[1] || null); }
+
+	// Create a full-width preview area and insert it directly under the Body (Markdown) field
+	const previewArea = document.createElement('div');
+	previewArea.id = 'previewArea';
+	previewArea.className = 'mt-3 d-none card w-100';
+	previewArea.innerHTML = '<div class="card-body"></div>';
+	// Find the column that wraps the textarea and insert after it
+	(function(){
+		const bodyEl = document.getElementById('body');
+		if(!bodyEl) return;
+		let col = bodyEl.closest('.col-12') || bodyEl.parentElement;
+		if(col && col.parentElement){
+			if(col.nextSibling){
+				col.parentElement.insertBefore(previewArea, col.nextSibling);
+			} else {
+				col.parentElement.appendChild(previewArea);
+			}
+		} else if(submitGroup && submitGroup.parentElement){
+			submitGroup.parentElement.appendChild(previewArea);
+		}
+	})();
+
+	previewBtn.addEventListener('click', ()=>{
+		const area = document.getElementById('previewArea');
+		if(!area) return;
+		if(area.classList.contains('d-none')){
+			area.classList.remove('d-none');
+			area.querySelector('.card-body').innerHTML = marked.parse(easyMDE.value());
+			previewBtn.textContent = 'Hide Preview';
+		} else { area.classList.add('d-none'); previewBtn.textContent = 'Preview'; }
+	});
+
+	// Insert autosave status element
+	const autos = document.getElementById('btnText')?.parentElement || document.querySelector('.d-flex.align-items-center');
+	if(autos){
+		const s = document.createElement('small'); s.id = 'autosaveStatus'; s.className='text-muted ms-2'; autos.appendChild(s);
+	}
+
+	loadDraft();
+	setupAutosave();
 
 	// Helpers UI bottone submit
 	const btn = document.getElementById('submitBtn');
@@ -208,8 +322,7 @@
 			author: Number(fd.get('author')),
 			status: fd.get('status') || 'draft',
 			published_at: fd.get('published_at') ? new Date(fd.get('published_at')).toISOString() : null,
-			body: easyMDE.value(), // Markdown dal WYSIWYG
-			content: easyMDE.value(), // Per compatibilità serializer
+			content: easyMDE.value(), // Markdown dal WYSIWYG
 			is_published: (fd.get('status') === 'published'),
 			cover_image_url: fd.get('cover_image_url') || null,
 		};
@@ -217,13 +330,8 @@
 		const resBox = document.getElementById('result');
 
 		try {
-			const res = await fetch('/api/blog/posts/', {
+			const res = await WriterAPI.apiFetch(WriterAPI.API.POSTS, {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'X-CSRFToken': csrftoken
-				},
-				credentials: 'same-origin',
 				body: JSON.stringify(payload)
 			});
 			const data = await res.json();
@@ -247,6 +355,20 @@
 			setSubmitting(false);
 		}
 	});
+</script>
+</body>
+
+<!-- Mobile bottom action bar -->
+<div id="mobileEditorBar" class="d-md-none" style="position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid rgba(0,0,0,0.06);padding:8px 12px;z-index:1060;display:flex;gap:.5rem;justify-content:space-between;align-items:center;">
+	<button id="mobileSave" class="btn btn-primary" style="flex:1">Save</button>
+	<button id="mobilePreview" class="btn btn-outline-secondary" style="flex:1">Preview</button>
+	<button id="mobileDraft" class="btn btn-outline-secondary" style="flex:1">Draft</button>
+</div>
+<script>
+	// Wire mobile bottom bar to existing actions
+	document.getElementById('mobileSave')?.addEventListener('click', ()=> document.getElementById('submitBtn')?.click());
+	document.getElementById('mobilePreview')?.addEventListener('click', ()=> document.getElementById('previewBtn')?.click());
+	document.getElementById('mobileDraft')?.addEventListener('click', ()=> { document.querySelector('[name="status"]').value='draft'; document.getElementById('submitBtn')?.click(); });
 </script>
 </body>
 </html>

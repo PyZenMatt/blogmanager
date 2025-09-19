@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Taxonomy Management</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .taxonomy-caret { display:inline-block; transition: transform .15s ease-in-out; }
+        .btn.collapsed .taxonomy-caret { transform: rotate(0deg); }
+        .btn:not(.collapsed) .taxonomy-caret { transform: rotate(90deg); }
+    </style>
 </head>
 <body>
 <div class="container mt-5">
@@ -79,6 +84,20 @@
                                 </div>
                             </div>
                         </div>
+                        <hr>
+                        <div class="mb-2 d-flex gap-2 align-items-end">
+                            <div class="flex-grow-1">
+                                <label class="form-label">Filter by site</label>
+                                <select id="categoriesSiteFilter" class="form-select">
+                                    <option value="">All sites</option>
+                                </select>
+                            </div>
+                            <div>
+                                <button id="applyCategoriesFilter" class="btn btn-sm btn-primary">Apply</button>
+                            </div>
+                        </div>
+                        <!-- Group by site removed: always show combined categories -->
+                        <div id="categoriesList">Loading categories…</div>
                     </div>
                 </div>
             </div>
@@ -125,19 +144,27 @@
     }
     const csrftoken = getCookie('csrftoken');
 
+    // map siteId -> site object (populated by populateSites)
+    const sitesById = {};
+    let __clusterCounter = 0;
+
     // Popola select Site nel modal Category
     async function populateSites() {
         const selCat = document.getElementById('siteSelectCat');
         const selAuthor = document.getElementById('siteSelectAuthor');
         if (selCat) selCat.innerHTML = '';
         if (selAuthor) selAuthor.innerHTML = '';
-        const res = await fetch('/api/sites/');
+    const res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(WriterAPI.API.SITES) : await fetch('/api/sites/');
         const data = await res.json();
         const sites = Array.isArray(data) ? data : (data.results || []);
         sites.forEach(site => {
+            sitesById[site.id] = site;
             const opt = `<option value="${site.id}">${site.name}</option>`;
             if (selCat) selCat.insertAdjacentHTML('beforeend', opt);
             if (selAuthor) selAuthor.insertAdjacentHTML('beforeend', opt);
+            // also populate categories site filter
+            const csf = document.getElementById('categoriesSiteFilter');
+            if (csf) csf.insertAdjacentHTML('beforeend', opt);
         });
     }
     document.getElementById('newCategory').addEventListener('show.bs.modal', populateSites);
@@ -148,7 +175,9 @@
         e.preventDefault();
         const fd = new FormData(e.target);
         const payload = { name: fd.get('name'), domain: fd.get('domain') };
-        const res = await fetch('/api/sites/', {
+        const res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(WriterAPI.API.SITES, {
+            method: 'POST', body: JSON.stringify(payload)
+        }) : await fetch('/api/sites/', {
             method: 'POST', headers: { 'Content-Type':'application/json','X-CSRFToken': csrftoken },
             credentials: 'same-origin', body: JSON.stringify(payload)
         });
@@ -160,7 +189,8 @@
         e.preventDefault();
         const fd = new FormData(e.target);
         const payload = { site: Number(fd.get('site')), name: fd.get('name'), slug: fd.get('slug') || null };
-    const res = await fetch('/api/blog/categories/', {
+        const endpoint = (window.WriterAPI && window.WriterAPI.API && WriterAPI.API.CATEGORIES) ? WriterAPI.API.CATEGORIES : '/api/blog/categories/';
+        const res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(endpoint, { method: 'POST', body: JSON.stringify(payload) }) : await fetch(endpoint, {
             method: 'POST', headers: { 'Content-Type':'application/json','X-CSRFToken': csrftoken },
             credentials: 'same-origin', body: JSON.stringify(payload)
         });
@@ -172,12 +202,511 @@
         e.preventDefault();
         const fd = new FormData(e.target);
         const payload = { site: Number(fd.get('site')), name: fd.get('name'), slug: fd.get('slug') || null };
-        const res = await fetch('/api/blog/authors/', {
+        const endpointA = (window.WriterAPI && window.WriterAPI.API && WriterAPI.API.AUTHORS) ? WriterAPI.API.AUTHORS : '/api/blog/authors/';
+        const res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(endpointA, { method: 'POST', body: JSON.stringify(payload) }) : await fetch(endpointA, {
             method: 'POST', headers: { 'Content-Type':'application/json','X-CSRFToken': csrftoken },
             credentials: 'same-origin', body: JSON.stringify(payload)
         });
         if (res.ok) { location.reload(); } else { alert('Error creating author'); }
     });
+
+    // Load and render categories grouped by category/subcluster
+    function groupCategories(categories) {
+        // Expect categories to have: id, site, name, slug
+    // Derive a nested tree: category -> subcluster(s) -> leaf categories
+        const groups = {};
+        categories.forEach(cat => {
+            const parts = (cat.name || '').split('/').map(s => s.trim()).filter(Boolean);
+            if (parts.length === 0) return;
+            const category = parts[0];
+            const subs = parts.slice(1);
+            groups[category] = groups[category] || { name: category, subs: {}, leaves: [] };
+            if (subs.length === 0) {
+                groups[category].leaves.push(cat);
+            } else {
+                // build nested path under subs (join by '/')
+                const subKey = subs.join('/');
+                groups[category].subs[subKey] = groups[category].subs[subKey] || { name: subKey, items: [] };
+                groups[category].subs[subKey].items.push(cat);
+            }
+        });
+        // normalize arrays
+        Object.values(groups).forEach(g => {
+            g.subs = Object.values(g.subs).sort((a,b)=> a.name.localeCompare(b.name));
+            g.leaves = g.leaves.sort((a,b)=> a.name.localeCompare(b.name));
+        });
+        return groups;
+    }
+
+    function renderCategoriesInto(container, categories) {
+        if (!categories || categories.length === 0) {
+            container.innerHTML = '<div class="alert alert-secondary">No categories</div>';
+            return;
+        }
+        const groups = groupCategories(categories);
+        const list = document.createElement('div');
+        list.className = 'list-group';
+        Object.keys(groups).sort().forEach(categoryName => {
+            const group = groups[categoryName];
+            const item = document.createElement('div');
+            item.className = 'list-group-item';
+            const header = document.createElement('div');
+            header.className = 'd-flex justify-content-between align-items-center';
+            header.innerHTML = `<strong>${clusterName}</strong>`;
+            const toggle = document.createElement('button');
+            const collapseId = `category-${__clusterCounter++}`;
+            toggle.className = 'btn btn-sm btn-outline-secondary collapsed';
+            toggle.type = 'button';
+            toggle.setAttribute('data-bs-toggle', 'collapse');
+            toggle.setAttribute('data-bs-target', `#${collapseId}`);
+            toggle.setAttribute('aria-expanded', 'false');
+            toggle.setAttribute('aria-controls', collapseId);
+            toggle.innerHTML = `<span class="taxonomy-caret">▸</span> <span class="visually-hidden">Toggle</span>`;
+            header.appendChild(toggle);
+            item.appendChild(header);
+
+            const inner = document.createElement('div');
+            inner.className = 'mt-2';
+            const collapseWrap = document.createElement('div');
+            collapseWrap.className = 'collapse';
+            collapseWrap.id = collapseId;
+
+            // leaves
+            if (group.leaves.length) {
+                const leavesList = document.createElement('ul');
+                group.leaves.forEach(c => {
+                    const li = document.createElement('li');
+                    li.textContent = c.name;
+                    leavesList.appendChild(li);
+                });
+                inner.appendChild(leavesList);
+            }
+
+            // subclusters and their items
+            if (group.subs.length) {
+                group.subs.forEach(sub => {
+                    const subHeader = document.createElement('div');
+                    subHeader.className = 'fw-semibold mt-2';
+                    subHeader.textContent = sub.name;
+                    inner.appendChild(subHeader);
+                    const ul = document.createElement('ul');
+                    sub.items.forEach(it => { const li = document.createElement('li'); li.textContent = it.name; ul.appendChild(li); });
+                    inner.appendChild(ul);
+                });
+            }
+
+            // bootstrap collapse will control `collapseWrap`
+            collapseWrap.appendChild(inner);
+            item.appendChild(collapseWrap);
+
+            // ensure toggle reliably controls the collapse via Bootstrap API
+            try {
+                toggle.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    try {
+                        const inst = bootstrap.Collapse.getOrCreateInstance(collapseWrap);
+                        inst.toggle();
+                    } catch (err) {
+                        // fallback to toggling class if bootstrap API not available
+                        collapseWrap.classList.toggle('show');
+                        toggle.classList.toggle('collapsed');
+                        toggle.setAttribute('aria-expanded', toggle.classList.contains('collapsed') ? 'false' : 'true');
+                    }
+                });
+            } catch (err) {
+                // ignore event attach errors
+            }
+            list.appendChild(item);
+        });
+        container.innerHTML = '';
+        container.appendChild(list);
+    }
+
+    async function loadCategories() {
+        const container = document.getElementById('categoriesList');
+        container.innerHTML = 'Loading categories…';
+        try {
+            const csf = document.getElementById('categoriesSiteFilter');
+            const siteFilter = csf ? csf.value : '';
+            let endpoint = (window.WriterAPI && window.WriterAPI.API && WriterAPI.API.CATEGORIES) ? WriterAPI.API.CATEGORIES : '/api/blog/categories/';
+            if (siteFilter) {
+                // API supports filter via ?site=<id>
+                endpoint = endpoint + '?site=' + encodeURIComponent(siteFilter);
+            }
+            // Fetch all pages (DRF pagination may limit results). Use page_size param if available.
+            const categories = await fetchAllCategories(endpoint, siteFilter);
+            // Try server-side grouped taxonomy first
+            let serverTax = null;
+            try {
+                serverTax = await fetchServerTaxonomy(siteFilter);
+            } catch (err) {
+                console.warn('server taxonomy fetch failed', err);
+            }
+            // Debug: log counts and distinct site ids
+            try {
+                const siteIds = Array.from(new Set(categories.map(c => c.site).filter(Boolean)));
+                console.log('taxonomy: fetched categories', categories.length, 'distinct sites', siteIds);
+                const info = document.createElement('div');
+                info.className = 'mb-2 small text-muted';
+                info.textContent = `Found ${categories.length} categories across ${siteIds.length} sites (ids: ${siteIds.join(', ')})`;
+                container.innerHTML = '';
+                container.appendChild(info);
+            } catch (err) {
+                console.warn('taxonomy debug failed', err);
+            }
+            // Wait for sites to be populated (so we can display site names if needed)
+            await populateSitesPromise;
+            // If server returned grouped taxonomy, prefer it (authoritative)
+            if (serverTax && serverTax.categories && serverTax.categories.length) {
+                container.innerHTML = '';
+                const info2 = document.createElement('div');
+                info2.className = 'mb-2 small text-muted';
+                info2.textContent = `Server-side grouped taxonomy (categories: ${serverTax.categories.length})`;
+                container.appendChild(info2);
+                renderServerTaxonomy(container, serverTax);
+                return;
+            }
+
+            // Try to build taxonomy from posts' front-matter as fallback
+            let postsTax = [];
+            try {
+                postsTax = await buildTaxonomyFromPosts(siteFilter);
+            } catch (err) {
+                console.warn('buildTaxonomyFromPosts failed', err);
+            }
+            if (postsTax && postsTax.length && postsTax.length > categories.length) {
+                container.innerHTML = '';
+                const info2 = document.createElement('div');
+                info2.className = 'mb-2 small text-muted';
+                info2.textContent = `Built taxonomy from posts-derived ${postsTax.length} entries (preferred)`;
+                container.appendChild(info2);
+                renderCategoriesInto(container, postsTax);
+            } else {
+                // Default: render combined flat list (show all categories returned by the API)
+                renderCategoriesInto(container, categories);
+            }
+        } catch (err) {
+            container.innerHTML = '<div class="alert alert-danger">Failed to load categories</div>';
+            console.error(err);
+        }
+    }
+
+    // Fetch server-side grouped taxonomy endpoint
+    async function fetchServerTaxonomy(siteFilter=''){
+        const base = (window.WriterAPI && window.WriterAPI.API && WriterAPI.API.TAXONOMY) ? WriterAPI.API.TAXONOMY : '/api/blog/taxonomy/';
+        let url = base;
+        if (siteFilter) url = url + '?site=' + encodeURIComponent(siteFilter);
+        const res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(url) : await fetch(url);
+        if (!res.ok) throw new Error('server taxonomy request failed');
+        return await res.json();
+    }
+
+    // Render server-side grouped taxonomy (categories -> subclusters)
+    function renderServerTaxonomy(container, data) {
+        // data: { site: <id|null>, categories: [ {category, subclusters:[{name,count,examples}]} ] }
+        const list = document.createElement('div');
+        list.className = 'list-group';
+        (data.categories || []).forEach((catObj, idx) => {
+            const categoryName = catObj.category || catObj.name || ('Category ' + idx);
+            const item = document.createElement('div');
+            item.className = 'list-group-item';
+            const header = document.createElement('div');
+            header.className = 'd-flex justify-content-between align-items-center';
+            const subsCount = (catObj.subclusters || []).length;
+            header.innerHTML = `<strong>${categoryName}</strong> <small class="text-muted">${subsCount} subclusters</small>`;
+            const toggle = document.createElement('button');
+            const collapseId = `srv-cat-${__clusterCounter++}`;
+            toggle.className = 'btn btn-sm btn-outline-secondary collapsed';
+            toggle.type = 'button';
+            toggle.setAttribute('data-bs-toggle', 'collapse');
+            toggle.setAttribute('data-bs-target', `#${collapseId}`);
+            toggle.setAttribute('aria-expanded', 'false');
+            toggle.setAttribute('aria-controls', collapseId);
+            toggle.innerHTML = `<span class="taxonomy-caret">▸</span> <span class="visually-hidden">Toggle</span>`;
+            header.appendChild(toggle);
+            item.appendChild(header);
+
+            const collapseWrap = document.createElement('div');
+            collapseWrap.className = 'collapse mt-2';
+            collapseWrap.id = collapseId;
+            // subclusters
+            (catObj.subclusters || []).forEach(sub => {
+                const subHeader = document.createElement('div');
+                subHeader.className = 'fw-semibold mt-2';
+                subHeader.textContent = `${sub.name} (${sub.count})`;
+                collapseWrap.appendChild(subHeader);
+                if (sub.examples && sub.examples.length) {
+                    const ul = document.createElement('ul');
+                    sub.examples.forEach(ex => { const li = document.createElement('li'); li.textContent = ex; ul.appendChild(li); });
+                    collapseWrap.appendChild(ul);
+                }
+            });
+
+            item.appendChild(collapseWrap);
+            try {
+                toggle.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    try {
+                        const inst = bootstrap.Collapse.getOrCreateInstance(collapseWrap);
+                        inst.toggle();
+                    } catch (err) {
+                        collapseWrap.classList.toggle('show');
+                        toggle.classList.toggle('collapsed');
+                        toggle.setAttribute('aria-expanded', toggle.classList.contains('collapsed') ? 'false' : 'true');
+                    }
+                });
+            } catch (err) {}
+            list.appendChild(item);
+        });
+        container.innerHTML = '';
+        container.appendChild(list);
+    }
+
+    // --- Posts-based taxonomy builder ---
+    function extractFrontMatter(text) {
+        if (!text) return null;
+        const m = text.match(/^\s*---\s*\n([\s\S]*?)\n---\s*\n/);
+        if (!m) return null;
+        return m[1];
+    }
+
+    function parseFMForCluster(fmText) {
+        const out = { categories: [], clusters: [] };
+        const lines = (fmText || '').split(/\r?\n/);
+        let key = null;
+        for (let i=0;i<lines.length;i++){
+            const raw = lines[i];
+            const line = raw.trim();
+            if (!line) { key = null; continue; }
+            const kv = line.match(/^([a-zA-Z0-9_\-]+):\s*(.*)$/);
+            if (kv) {
+                key = kv[1];
+                let val = kv[2] || '';
+                if (val === '') {
+                    // read list items
+                    const arr = [];
+                    let j = i+1;
+                    for (; j<lines.length; j++){
+                        const sub = lines[j];
+                        if (/^\s*-\s+/.test(sub)) {
+                            arr.push(sub.replace(/^\s*-\s+/, '').trim());
+                        } else if (/^\s/.test(sub)) {
+                            continue;
+                        } else break;
+                    }
+                    i = j-1;
+                    val = arr.length ? arr : '';
+                }
+                if (key === 'cluster') {
+                    if (Array.isArray(val)) out.clusters.push(...val.filter(Boolean));
+                    else if (typeof val === 'string' && val) out.clusters.push(val);
+                } else if (key === 'subcluster') {
+                    if (Array.isArray(val)) out.clusters.push(...val.filter(Boolean));
+                    else if (typeof val === 'string' && val) out.clusters.push(val);
+                } else if (key === 'categories') {
+                    if (Array.isArray(val)) out.categories.push(...val.filter(Boolean));
+                    else if (val) out.categories.push(val);
+                }
+            } else if (/^\-\s+/.test(line) && key) {
+                const v = line.replace(/^\-\s+/, '').trim();
+                if (key === 'cluster') out.clusters.push(v);
+                if (key === 'subcluster') out.clusters.push(v);
+                if (key === 'categories') out.categories.push(v);
+            } else {
+                key = null;
+            }
+        }
+        return out;
+    }
+
+    async function fetchPosts(siteFilter=''){
+        const endpointBase = (window.WriterAPI && window.WriterAPI.API && WriterAPI.API.POSTS) ? WriterAPI.API.POSTS : '/api/blog/posts/';
+        const qp = siteFilter ? `?site=${encodeURIComponent(siteFilter)}&page_size=1000` : '?page_size=1000';
+        const endpoint = endpointBase + qp;
+        const res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(endpoint) : await fetch(endpoint);
+        const data = await res.json();
+        return Array.isArray(data) ? data : (data.results || []);
+    }
+
+    // Fetch all posts following pagination (like fetchAllCategories)
+    async function fetchAllPosts(siteFilter=''){
+        const endpointBase = (window.WriterAPI && window.WriterAPI.API && WriterAPI.API.POSTS) ? WriterAPI.API.POSTS : '/api/blog/posts/';
+        const sep = endpointBase.includes('?') ? '&' : '?';
+        const qp = siteFilter ? `site=${encodeURIComponent(siteFilter)}&page_size=1000` : 'page_size=1000';
+        const first = endpointBase + sep + qp;
+        let res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(first) : await fetch(first);
+        if (!res.ok) {
+            res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(endpointBase) : await fetch(endpointBase);
+        }
+        let data = await res.json();
+        if (Array.isArray(data)) return data;
+        const items = [];
+        items.push(...(data.results || []));
+        let next = data.next;
+        while (next) {
+            try {
+                const nextUrl = new URL(next, window.location.origin);
+                if (siteFilter && !nextUrl.searchParams.has('site')) {
+                    nextUrl.searchParams.set('site', siteFilter);
+                }
+                const r = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(nextUrl.toString()) : await fetch(nextUrl.toString());
+                const d = await r.json();
+                items.push(...(d.results || []));
+                next = d.next;
+            } catch (err) {
+                console.warn('fetchAllPosts follow-next failed', err);
+                break;
+            }
+        }
+        return items;
+    }
+
+    // Fetch all categories from a potentially paginated endpoint
+    async function fetchAllCategories(baseEndpoint, siteFilter=''){
+        const items = [];
+        // try to add a large page_size param first
+        const sep = baseEndpoint.includes('?') ? '&' : '?';
+        let endpoint = baseEndpoint + sep + 'page_size=1000';
+        let res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(endpoint) : await fetch(endpoint);
+        if (!res.ok) {
+            // fallback to non-paginated attempt
+            res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(baseEndpoint) : await fetch(baseEndpoint);
+        }
+        let data = await res.json();
+        if (Array.isArray(data)) return data;
+        const results = data.results || [];
+        items.push(...results);
+        // follow next links if present, preserving siteFilter
+        let next = data.next;
+        while (next) {
+            try {
+                const nextUrl = new URL(next, window.location.origin);
+                if (siteFilter && !nextUrl.searchParams.has('site')) {
+                    nextUrl.searchParams.set('site', siteFilter);
+                }
+                const r = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(nextUrl.toString()) : await fetch(nextUrl.toString());
+                const d = await r.json();
+                items.push(...(d.results || []));
+                next = d.next;
+            } catch (err) {
+                console.warn('fetchAllCategories follow-next failed', err);
+                break;
+            }
+        }
+        return items;
+    }
+
+    async function buildTaxonomyFromPosts(siteFilter=''){
+        try {
+            const posts = await fetchAllPosts(siteFilter);
+            const entries = new Set();
+            // For mapping cluster -> set(subcluster)
+            const clusterMap = {};
+            posts.forEach(p => {
+                const raw = p.content || p.body || p.content || '';
+                const fm = extractFrontMatter(raw);
+                if (!fm) return;
+                // crude per-post parse to extract cluster, subcluster, categories preserving association
+                const lines = fm.split(/\r?\n/).map(l=>l.trim());
+                let key = null;
+                const local = { cluster: [], subcluster: [], categories: [] };
+                for (let i=0;i<lines.length;i++){
+                    const line = lines[i];
+                    if (!line) { key = null; continue; }
+                    const m = line.match(/^([a-zA-Z0-9_\-]+):\s*(.*)$/);
+                    if (m) {
+                        key = m[1];
+                        let val = m[2] || '';
+                        if (val === '') {
+                            // collect list entries
+                            let j=i+1; const arr=[];
+                            for (; j<lines.length; j++){
+                                const sub = lines[j];
+                                if (/^\-\s+/.test(sub)) arr.push(sub.replace(/^\-\s+/, '').trim());
+                                else if (/^\s/.test(sub)) continue; else break;
+                            }
+                            i = j-1;
+                            val = arr;
+                        }
+                        if (key === 'cluster') {
+                            if (Array.isArray(val)) local.cluster.push(...val);
+                            else if (val) local.cluster.push(val);
+                        } else if (key === 'subcluster') {
+                            if (Array.isArray(val)) local.subcluster.push(...val);
+                            else if (val) local.subcluster.push(val);
+                        } else if (key === 'categories') {
+                            if (Array.isArray(val)) local.categories.push(...val);
+                            else if (val) local.categories.push(val);
+                        }
+                    } else if (/^\-\s+/.test(line) && key) {
+                        const v = line.replace(/^\-\s+/, '').trim();
+                        if (key === 'cluster') local.cluster.push(v);
+                        if (key === 'subcluster') local.subcluster.push(v);
+                        if (key === 'categories') local.categories.push(v);
+                    } else {
+                        key = null;
+                    }
+                }
+
+                // build mapping
+                const clusters = local.cluster.length ? local.cluster : [];
+                const subs = local.subcluster.length ? local.subcluster : [];
+                const cats = local.categories.length ? local.categories : [];
+                if (clusters.length === 0 && subs.length === 0 && cats.length>0) {
+                    // categories without cluster -> add them as top-level
+                    cats.forEach(cat => entries.add(cat));
+                }
+                clusters.forEach(cl => {
+                    const cln = cl;
+                    clusterMap[cln] = clusterMap[cln] || new Set();
+                    if (subs.length) {
+                        subs.forEach(su => clusterMap[cln].add(su));
+                    }
+                    if (cats.length) {
+                        cats.forEach(cat => clusterMap[cln].add(cat));
+                    }
+                });
+            });
+
+            // flatten to names 'cluster' and 'cluster/sub'
+            Object.keys(clusterMap).forEach(cl => {
+                entries.add(cl);
+                Array.from(clusterMap[cl]).forEach(sub => {
+                    if (sub && sub !== cl) entries.add(`${cl}/${sub}`);
+                });
+            });
+
+            return Array.from(entries).map(name => ({ id: name, name: name, slug: name.replace(/\s+/g,'-').toLowerCase() }));
+        } catch (err) {
+            console.warn('fetchPosts/buildTaxonomyFromPosts failed', err);
+            return [];
+        }
+    }
+
+    // Load categories when the Categories tab is shown
+    const categoriesTab = document.querySelector('#categories-tab');
+    if (categoriesTab) {
+        categoriesTab.addEventListener('shown.bs.tab', loadCategories);
+    }
+
+    // Apply filter handlers
+    document.addEventListener('click', (e) => {
+        if (e.target && e.target.id === 'applyCategoriesFilter') {
+            e.preventDefault();
+            loadCategories();
+        }
+    });
+    const csfElem = document.getElementById('categoriesSiteFilter');
+    if (csfElem) {
+        csfElem.addEventListener('change', () => {
+            // auto-apply on change
+            loadCategories();
+        });
+    }
+
+    // Ensure site list is populated for the category filter and mapping
+    // immediately (so loadCategories can reference `sitesById`).
+    const populateSitesPromise = populateSites().catch(err => { console.warn('populateSites failed', err); return []; });
 </script>
 </body>
 </html>

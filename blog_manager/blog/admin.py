@@ -10,11 +10,13 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 from .models import Author, Category, Comment, Post, PostImage, Site, ExportAudit
+import re
 from django import forms
 from django.shortcuts import render, redirect
 from django.urls import path
 from django.utils.safestring import mark_safe
 from .services.github_ops import delete_post_from_repo
+from .utils import create_categories_from_frontmatter
 
 
 @admin.register(Site)
@@ -186,9 +188,25 @@ class SiteAdmin(admin.ModelAdmin):
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "slug", "site")
+    list_display = ("id", "name", "cluster", "subcluster", "slug", "site")
     search_fields = ("name", "slug")
     list_filter = ("site",)
+
+    def cluster(self, obj):
+        try:
+            parts = (obj.name or '').split('/', 1)
+            return parts[0].strip() if parts and parts[0] else ''
+        except Exception:
+            return ''
+    cluster.short_description = 'Cluster'
+
+    def subcluster(self, obj):
+        try:
+            parts = (obj.name or '').split('/', 1)
+            return parts[1].strip() if len(parts) > 1 and parts[1] else ''
+        except Exception:
+            return ''
+    subcluster.short_description = 'Subcluster'
 
 
 @admin.register(Author)
@@ -206,7 +224,7 @@ class PostImageInline(admin.TabularInline):
 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "slug", "status", "published_at", "site")
+    list_display = ("id", "title", "slug", "clusters_display", "status", "published_at", "site")
     list_filter = ("status", "site", "published_at", "categories", "tags")
     # Removed SEO/meta fields from search as they are no longer model fields
     search_fields = ("title", "slug", "body")
@@ -545,6 +563,13 @@ class PostAdmin(admin.ModelAdmin):
             getattr(obj, "status", "") == "published"
         )
 
+        # Ensure categories from front-matter are created/assigned when saving via admin
+        try:
+            # this will create Category objects and assign them to the post
+            create_categories_from_frontmatter(obj, fields=["categories", "cluster"], hierarchy="slash")
+        except Exception:
+            logger.exception("Failed to create categories from front-matter for post %s", getattr(obj, 'pk', None))
+
         # se è appena passato a pubblicato → programma export async DOPO il commit
         if now_published and not was_published:
             pk = obj.pk
@@ -554,6 +579,85 @@ class PostAdmin(admin.ModelAdmin):
                 "✅ Export programmato: push tra pochi secondi.",
                 level=messages.SUCCESS,
             )
+
+    def clusters_display(self, obj):
+        """Show cluster/subcluster information derived from front-matter or assigned categories."""
+        try:
+            raw = obj.content or getattr(obj, 'body', '') or ''
+            m = re.search(r'^\s*---\s*\n([\s\S]*?)\n---\s*\n', raw, re.M)
+            clusters = []
+            subclusters_map = {}
+            if m:
+                fm = m.group(1)
+                lines = [l.rstrip() for l in fm.splitlines()]
+                key = None
+                for i, line in enumerate(lines):
+                    s = line.strip()
+                    if not s:
+                        key = None
+                        continue
+                    kv = re.match(r'^([a-zA-Z0-9_\-]+):\s*(.*)$', s)
+                    if kv:
+                        key = kv.group(1)
+                        val = kv.group(2) or ''
+                        if val == '':
+                            arr = []
+                            j = i+1
+                            while j < len(lines) and re.match(r'^\s*-\s+', lines[j]):
+                                arr.append(re.sub(r'^\s*-\s+', '', lines[j]).strip())
+                                j += 1
+                            if key in ('cluster','clusters'):
+                                clusters.extend(arr)
+                            elif key in ('subcluster','subclusters'):
+                                clusters.extend(arr)
+                            elif key == 'categories':
+                                clusters.extend(arr)
+                        else:
+                            if key in ('cluster','clusters'):
+                                clusters.append(val)
+                            elif key in ('subcluster','subclusters'):
+                                clusters.append(val)
+                            elif key == 'categories':
+                                clusters.append(val)
+                    elif key and re.match(r'^\s*-\s+', line):
+                        v = re.sub(r'^\s*-\s+', '', line).strip()
+                        if key in ('cluster','clusters'):
+                            clusters.append(v)
+                        elif key in ('subcluster','subclusters'):
+                            clusters.append(v)
+                        elif key == 'categories':
+                            clusters.append(v)
+
+            if not clusters:
+                try:
+                    for c in obj.categories.all():
+                        name = c.name or ''
+                        if '/' in name:
+                            cl, sub = name.split('/', 1)
+                            clusters.append(cl.strip())
+                            subclusters_map.setdefault(cl.strip(), set()).add(sub.strip())
+                        else:
+                            clusters.append(name.strip())
+                except Exception:
+                    pass
+
+            uniq = []
+            for c in clusters:
+                c = (c or '').strip()
+                if not c or c in uniq:
+                    continue
+                uniq.append(c)
+            parts = []
+            for c in uniq:
+                subs = sorted(list(subclusters_map.get(c, [])))
+                if subs:
+                    parts.append(f"{c} ({', '.join(subs)})")
+                else:
+                    parts.append(c)
+            return '; '.join(parts)[:200]
+        except Exception:
+            return ''
+    clusters_display.short_description = 'Cluster / Subcluster'
 
 
 @admin.register(Comment)

@@ -9,6 +9,8 @@ class Conflict(APIException):
     status_code = HTTPStatus.CONFLICT
     default_detail = "Conflitto: slug già in uso per questo sito."
 from django_filters.rest_framework import DjangoFilterBackend
+import re
+import yaml
 from rest_framework import filters, generics, decorators, permissions, response, status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
@@ -60,6 +62,108 @@ class CategoryListView(generics.ListAPIView):
 
     def get_queryset(self):
         return Category.objects.all()
+
+
+class TaxonomyView(generics.GenericAPIView):
+    """Return a grouped taxonomy (category -> subclusters -> examples) for a site.
+
+    Query params:
+      - site: site id (optional). If provided, taxonomy is built for that site only.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        site = request.query_params.get('site')
+        from collections import defaultdict
+
+        fm_re = re.compile(r'^\s*---\s*\n([\s\S]*?)\n---\s*\n', re.M)
+        categories_map = defaultdict(lambda: defaultdict(set))
+
+        posts_qs = Post.objects.all()
+        if site:
+            try:
+                site_id = int(site)
+                posts_qs = posts_qs.filter(site_id=site_id)
+            except Exception:
+                pass
+
+        for p in posts_qs:
+            raw = p.content or getattr(p, 'body', '') or ''
+            m = fm_re.search(raw)
+            fm = None
+            if m:
+                txt = m.group(1)
+                try:
+                    fm = yaml.safe_load(txt) or {}
+                except Exception:
+                    fm = None
+
+            category_vals = []
+            sub_vals = []
+            # parse fm if present: prefer `categories` as primary key
+            if fm and isinstance(fm, dict):
+                c = fm.get('categories') or fm.get('category')
+                if c:
+                    if isinstance(c, list):
+                        category_vals.extend([str(x).strip() for x in c if x])
+                    else:
+                        category_vals.append(str(c).strip())
+                s = fm.get('subcluster') or fm.get('subclusters')
+                if s:
+                    if isinstance(s, list):
+                        sub_vals.extend([str(x).strip() for x in s if x])
+                    else:
+                        sub_vals.append(str(s).strip())
+
+            # fallback: inspect post.categories M2M
+            if not category_vals:
+                try:
+                    for cat in p.categories.all():
+                        name = cat.name or ''
+                        if '/' in name:
+                            category_vals.append(name.split('/')[0].strip())
+                        else:
+                            category_vals.append(name.strip())
+                except Exception:
+                    pass
+
+            if not category_vals and not sub_vals:
+                continue
+
+            if not category_vals:
+                category_vals = ['(no-category)']
+            if not sub_vals:
+                sub_vals = ['(no-subcluster)']
+
+            for cat_name in category_vals:
+                for su in sub_vals:
+                    categories_map[cat_name][su].add(p.title or f'post-{p.pk}')
+
+        # also include categories from Category model if no posts-derived categories
+        if not categories_map:
+            qs = Category.objects.all()
+            if site:
+                try:
+                    qs = qs.filter(site_id=int(site))
+                except Exception:
+                    pass
+            for c in qs:
+                parts = (c.name or '').split('/')
+                if not parts:
+                    continue
+                catn = parts[0].strip()
+                sub = '/'.join(parts[1:]).strip() if len(parts) > 1 else '(no-subcluster)'
+                categories_map[catn][sub].add(c.name)
+
+        # format response
+        resp = []
+        for catn, subs in sorted(categories_map.items(), key=lambda x: x[0]):
+            subs_out = []
+            for su, items in sorted(subs.items(), key=lambda x: x[0]):
+                subs_out.append({'name': su, 'count': len(items), 'examples': list(items)[:5]})
+            resp.append({'category': catn, 'subclusters': subs_out})
+
+        return response.Response({'site': site or None, 'categories': resp})
 
 
 # AUTHORS
@@ -160,6 +264,10 @@ class CategoryViewSet(ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
     permission_classes = [AllowAny]
+
+    # Allow filtering by site via ?site=<id>
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["site"]
 
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
