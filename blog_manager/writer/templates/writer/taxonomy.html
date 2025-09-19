@@ -252,7 +252,7 @@
             item.className = 'list-group-item';
             const header = document.createElement('div');
             header.className = 'd-flex justify-content-between align-items-center';
-            header.innerHTML = `<strong>${clusterName}</strong>`;
+            header.innerHTML = `<strong>${categoryName}</strong>`;
             const toggle = document.createElement('button');
             const collapseId = `category-${__clusterCounter++}`;
             toggle.className = 'btn btn-sm btn-outline-secondary collapsed';
@@ -271,16 +271,7 @@
             collapseWrap.className = 'collapse';
             collapseWrap.id = collapseId;
 
-            // leaves
-            if (group.leaves.length) {
-                const leavesList = document.createElement('ul');
-                group.leaves.forEach(c => {
-                    const li = document.createElement('li');
-                    li.textContent = c.name;
-                    leavesList.appendChild(li);
-                });
-                inner.appendChild(leavesList);
-            }
+            // omit parent-only leaves (articles that are 'mother' items without a subcluster)
 
             // subclusters and their items
             if (group.subs.length) {
@@ -412,8 +403,7 @@
             item.className = 'list-group-item';
             const header = document.createElement('div');
             header.className = 'd-flex justify-content-between align-items-center';
-            const subsCount = (catObj.subclusters || []).length;
-            header.innerHTML = `<strong>${categoryName}</strong> <small class="text-muted">${subsCount} subclusters</small>`;
+            header.innerHTML = `<strong>${categoryName}</strong>`;
             const toggle = document.createElement('button');
             const collapseId = `srv-cat-${__clusterCounter++}`;
             toggle.className = 'btn btn-sm btn-outline-secondary collapsed';
@@ -433,13 +423,9 @@
             (catObj.subclusters || []).forEach(sub => {
                 const subHeader = document.createElement('div');
                 subHeader.className = 'fw-semibold mt-2';
-                subHeader.textContent = `${sub.name} (${sub.count})`;
+                subHeader.textContent = sub.name;
                 collapseWrap.appendChild(subHeader);
-                if (sub.examples && sub.examples.length) {
-                    const ul = document.createElement('ul');
-                    sub.examples.forEach(ex => { const li = document.createElement('li'); li.textContent = ex; ul.appendChild(li); });
-                    collapseWrap.appendChild(ul);
-                }
+                // omit article examples list for a cleaner taxonomy UI
             });
 
             item.appendChild(collapseWrap);
