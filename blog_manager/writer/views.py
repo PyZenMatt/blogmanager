@@ -7,6 +7,8 @@ from django.urls import reverse_lazy
 
 from blog.models import Post
 from blog.services.publish import publish_post
+from blog.models import Category
+from django.db.models import Q
 
 
 class BootstrapLoginView(auth_views.LoginView):
@@ -57,6 +59,41 @@ def post_edit(request, id):
 @login_required
 def taxonomy(request):
     return render(request, "writer/taxonomy.html")
+
+
+@login_required
+def category_page(request, cat_id: int):
+    cat = get_object_or_404(Category, pk=cat_id)
+    # subcategories are categories with name like 'CategoryName/Sub'
+    prefix = cat.name + '/'
+    subcats = Category.objects.filter(site=cat.site, name__startswith=prefix).order_by('name')
+    # posts: those that have a category equal to this cat OR any subcategory under this prefix
+    posts = Post.objects.filter(categories__in=[cat] )
+    posts = posts | Post.objects.filter(categories__in=subcats)
+    posts = posts.distinct().order_by('-published_at')
+    return render(request, 'writer/category_listing.html', {
+        'category': cat,
+        'subcategories': subcats,
+        'posts': posts,
+    })
+
+
+@login_required
+def subcluster_page(request, cat_id: int, sub_id: int):
+    # cat_id is parent category id, sub_id is the subcategory id
+    parent = get_object_or_404(Category, pk=cat_id)
+    sub = get_object_or_404(Category, pk=sub_id, site=parent.site)
+    # posts in this subcategory
+    posts = Post.objects.filter(categories=sub).order_by('-published_at')
+    # siblings (other subcategories in same parent)
+    prefix = parent.name + '/'
+    siblings = Category.objects.filter(site=parent.site, name__startswith=prefix).exclude(pk=sub.pk).order_by('name')
+    return render(request, 'writer/category_listing.html', {
+        'category': parent,
+        'subcategory': sub,
+        'posts': posts,
+        'subcategories': siblings,
+    })
 
 
 @login_required

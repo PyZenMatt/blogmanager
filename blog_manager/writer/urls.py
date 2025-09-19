@@ -15,6 +15,8 @@ urlpatterns = [
         name="post_new",  # Already protected by @login_required
     ),
     path("taxonomy/", views.taxonomy, name="taxonomy"),
+    path("category/<int:cat_id>/", views.category_page, name="category_page"),
+    path("category/<int:cat_id>/sub/<int:sub_id>/", views.subcluster_page, name="subcluster_page"),
     path(
         "password-reset/",
         auth_views.PasswordResetView.as_view(
