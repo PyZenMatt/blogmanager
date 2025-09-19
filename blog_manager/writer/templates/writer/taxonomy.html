@@ -278,6 +278,21 @@
 
             // omit parent-only leaves (articles that are 'mother' items without a subcluster)
 
+            // render leaves (items directly under the category without subcluster)
+            if (group.leaves && group.leaves.length) {
+                const leavesList = document.createElement('ul');
+                group.leaves.forEach(c => {
+                    const li = document.createElement('li');
+                    if (c && c.id) {
+                        li.innerHTML = `<a href="/writer/category/${c.id}/">${c.name}</a>`;
+                    } else {
+                        li.textContent = c.name;
+                    }
+                    leavesList.appendChild(li);
+                });
+                inner.appendChild(leavesList);
+            }
+
             // subclusters and their items
             if (group.subs.length) {
                 group.subs.forEach(sub => {
@@ -286,7 +301,15 @@
                     subHeader.textContent = sub.name;
                     inner.appendChild(subHeader);
                     const ul = document.createElement('ul');
-                    sub.items.forEach(it => { const li = document.createElement('li'); li.textContent = it.name; ul.appendChild(li); });
+                        sub.items.forEach(it => {
+                            const li = document.createElement('li');
+                            if (it && it.id) {
+                                li.innerHTML = `<a href="/writer/category/${it.id}/">${it.name}</a>`;
+                            } else {
+                                li.textContent = it.name;
+                            }
+                            ul.appendChild(li);
+                        });
                     inner.appendChild(ul);
                 });
             }
@@ -359,7 +382,7 @@
                 info2.className = 'mb-2 small text-muted';
                 info2.textContent = `Server-side grouped taxonomy (categories: ${serverTax.categories.length})`;
                 container.appendChild(info2);
-                renderServerTaxonomy(container, serverTax);
+                renderServerTaxonomy(container, serverTax, categories);
                 return;
             }
 
@@ -398,8 +421,9 @@
     }
 
     // Render server-side grouped taxonomy (categories -> subclusters)
-    function renderServerTaxonomy(container, data) {
+    function renderServerTaxonomy(container, data, categoriesList) {
         // data: { site: <id|null>, categories: [ {category, subclusters:[{name,count,examples}]} ] }
+        // categoriesList: optional array of Category objects from the API (id, name, slug)
         const list = document.createElement('div');
         list.className = 'list-group';
         (data.categories || []).forEach((catObj, idx) => {
@@ -408,7 +432,14 @@
             item.className = 'list-group-item';
             const header = document.createElement('div');
             header.className = 'd-flex justify-content-between align-items-center';
-            header.innerHTML = `<strong>${categoryName}</strong>`;
+            // attempt to find a Category id for this categoryName
+            let parentCat = null;
+            if (Array.isArray(categoriesList)) parentCat = categoriesList.find(c => (c.name||'').trim() === categoryName);
+            if (parentCat) {
+                header.innerHTML = `<strong><a href="/writer/category/${parentCat.id}/">${categoryName}</a></strong>`;
+            } else {
+                header.innerHTML = `<strong>${categoryName}</strong>`;
+            }
             const toggle = document.createElement('button');
             const collapseId = `srv-cat-${__clusterCounter++}`;
             toggle.className = 'btn btn-sm btn-outline-secondary collapsed';
@@ -430,7 +461,24 @@
                 if (!sname || sname === '(no-subcluster)') return; // skip placeholder
                 const subHeader = document.createElement('div');
                 subHeader.className = 'fw-semibold mt-2';
-                subHeader.textContent = sname;
+                // try to find matching Category row for this subcluster
+                let subCat = null;
+                if (parentCat && Array.isArray(categoriesList)) {
+                    const expected = `${parentCat.name}/${sname}`;
+                    subCat = categoriesList.find(c => (c.name||'').trim() === expected);
+                } else if (Array.isArray(categoriesList)) {
+                    // fallback: try find any category matching 'Category/Sub'
+                    const expected2 = `${categoryName}/${sname}`;
+                    subCat = categoriesList.find(c => (c.name||'').trim() === expected2);
+                }
+                if (subCat && parentCat) {
+                    subHeader.innerHTML = `<a href="/writer/category/${parentCat.id}/sub/${subCat.id}/">${sname}</a>`;
+                } else if (subCat) {
+                    // no parent id, link directly to sub by its id using parent id equal to subCat id (best-effort)
+                    subHeader.innerHTML = `<a href="/writer/category/${subCat.id}/">${sname}</a>`;
+                } else {
+                    subHeader.textContent = sname;
+                }
                 collapseWrap.appendChild(subHeader);
                 // omit article examples list for a cleaner taxonomy UI
             });
