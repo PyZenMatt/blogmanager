@@ -222,7 +222,12 @@
             const subs = parts.slice(1);
             groups[category] = groups[category] || { name: category, subs: {}, leaves: [] };
             if (subs.length === 0) {
-                groups[category].leaves.push(cat);
+                // Skip parent-only leaves (articles that are category root without subcluster)
+                // e.g. names like 'CategoryName' or ones that include the placeholder '(no-subcluster)'
+                const isParentOnly = (cat.name || '').trim() === category || (cat.name || '').includes('(no-subcluster)');
+                if (!isParentOnly) {
+                    groups[category].leaves.push(cat);
+                }
             } else {
                 // build nested path under subs (join by '/')
                 const subKey = subs.join('/');
