@@ -53,3 +53,6 @@ secrets.env
 # Jekyll tests
 jekyll-test/
 *.swo
+
+#exporteed repos
+expoerted_repos/

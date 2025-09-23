@@ -29,7 +29,7 @@
       <h3 class="h6">Subclusters</h3>
       <ul>
         {% for s in subcategories %}
-          <li><a href="{% url 'writer:subcluster_page' category.id s.id %}">{{ s.name|slice:"":100 }}</a></li>
+          <li><a href="{% url 'writer:subcluster_page' category.id s.id %}">{{ s.name|slice:":100" }}</a></li>
         {% endfor %}
       </ul>
     </div>

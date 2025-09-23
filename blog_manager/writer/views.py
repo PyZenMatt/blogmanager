@@ -91,6 +91,9 @@ def category_page(request, cat_id: int):
         'grouped_posts': grouped,
         'parent_posts': parent_posts,
         'total_grouped_count': total_grouped_count,
+        # Template expects `posts` for listing; provide parent-only posts here so
+        # parent category page shows posts that don't belong to any subcluster.
+        'posts': parent_posts,
     })
 
 
@@ -120,89 +123,52 @@ def subcluster_page(request, cat_id: int, sub_id: int):
             except Exception:
                 fm = {}
             matched = False
-            # check explicit 'categories'
-            cats = fm.get('categories')
+            # Strict matching: only consider posts that explicitly reference the subcluster
+            #  - categories front-matter contains the full 'Parent/Sub' (target_full)
+            #  - OR front-matter has a 'subcluster'/'subclusters' that contains target_sub (or target_full)
+            #  - OR cluster mapping includes the sub under the given cluster (clu -> subs)
+            cats = fm.get('categories') if isinstance(fm, dict) else None
             if cats:
                 if isinstance(cats, (list, tuple)):
                     for c in cats:
                         if not c:
                             continue
-                        if str(c).strip() in (target_full, target_sub):
+                        if str(c).strip() == target_full:
                             matched = True
                             break
                 else:
-                    if str(cats).strip() in (target_full, target_sub):
+                    if str(cats).strip() == target_full:
                         matched = True
-            # check cluster/subcluster fields
+
             if not matched:
-                cluster_val = fm.get('cluster')
-                sub_val = fm.get('subcluster')
-                # cluster can be mapping, list or scalar
+                sub_val = fm.get('subcluster') if isinstance(fm, dict) else None
+                if sub_val:
+                    if isinstance(sub_val, (list, tuple)):
+                        for s in sub_val:
+                            if s and (str(s).strip() == target_sub or str(s).strip() == target_full):
+                                matched = True
+                                break
+                    else:
+                        if str(sub_val).strip() in (target_sub, target_full):
+                            matched = True
+
+            if not matched:
+                cluster_val = fm.get('cluster') if isinstance(fm, dict) else None
                 if isinstance(cluster_val, dict):
                     for clu, subs in cluster_val.items():
-                        clu = str(clu).strip()
                         if isinstance(subs, (list, tuple)):
                             for s in subs:
-                                if s and (f"{clu}/{s}" == target_full or str(s).strip() == target_sub):
+                                if s and (f"{str(clu).strip()}/{s}" == target_full or str(s).strip() == target_sub):
                                     matched = True
                                     break
                             if matched:
                                 break
-                        elif subs and (f"{clu}/{subs}" == target_full or str(subs).strip() == target_sub):
+                        elif subs and (f"{str(clu).strip()}/{subs}" == target_full or str(subs).strip() == target_sub):
                             matched = True
                             break
-                elif isinstance(cluster_val, (list, tuple)) and cluster_val:
-                    for clu in cluster_val:
-                        if clu and (str(clu).strip() == target_sub or str(clu).strip() == target_full):
-                            matched = True
-                            break
-                elif isinstance(cluster_val, str) and cluster_val.strip():
-                    clu = cluster_val.strip()
-                    if sub_val:
-                        if isinstance(sub_val, (list, tuple)):
-                            for s in sub_val:
-                                if s and (f"{clu}/{s}" == target_full or str(s).strip() == target_sub):
-                                    matched = True
-                                    break
-                        else:
-                            if f"{clu}/{sub_val}" == target_full or str(sub_val).strip() == target_sub:
-                                matched = True
-                    else:
-                        if clu == target_sub or clu == target_full:
-                            matched = True
-                elif sub_val:
-                    # only subcluster provided
-                    if isinstance(sub_val, (list, tuple)):
-                        for s in sub_val:
-                            if s and str(s).strip() in (target_full, target_sub):
-                                matched = True
-                                break
-                    else:
-                        if str(sub_val).strip() in (target_full, target_sub):
-                            matched = True
+
             if matched:
                 extra_pks.append(p.pk)
-            else:
-                # also check front-matter tags and Post.tags text field for matches
-                tags_fm = fm.get('tags') if isinstance(fm, dict) else None
-                if tags_fm:
-                    if isinstance(tags_fm, (list, tuple)):
-                        for t in tags_fm:
-                            if t and str(t).strip() in (target_full, target_sub):
-                                extra_pks.append(p.pk)
-                                break
-                    else:
-                        if str(tags_fm).strip() in (target_full, target_sub):
-                            extra_pks.append(p.pk)
-                            continue
-                # Post.tags is a free text field; split by comma/newline and check tokens
-                tfield = (getattr(p, 'tags', '') or '')
-                if tfield:
-                    tokens = re.split(r"[,\n\r]+", tfield)
-                    for tok in tokens:
-                        if tok and tok.strip() in (target_full, target_sub):
-                            extra_pks.append(p.pk)
-                            break
         if extra_pks:
             posts_qs = Post.objects.filter(pk__in=extra_pks).order_by('-published_at')
         else:

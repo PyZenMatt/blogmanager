@@ -399,7 +399,18 @@ class Post(models.Model):
             if not repo_path and getattr(settings, "BLOG_REPO_BASE", None):
                 fallback = os.path.join(settings.BLOG_REPO_BASE, site.slug)
             if repo_path and not os.path.isdir(repo_path):
-                raise ValidationError({"site": f"repo_path inesistente: {repo_path}"})
+                # Try to create the configured repo_path automatically (best-effort)
+                try:
+                    os.makedirs(repo_path, exist_ok=True)
+                except Exception as e:
+                    raise ValidationError({"site": f"repo_path inesistente: {repo_path} (creation failed: {e})"})
+                # If creation succeeded, persist on the Site model so subsequent runs see it
+                try:
+                    site.repo_path = repo_path
+                    site.save()
+                except Exception:
+                    # ignore persistence failures; directory exists and that's sufficient
+                    pass
             if (not repo_path) and fallback and not os.path.isdir(fallback):
                 # Best-effort: try to create the fallback directory so sync can proceed.
                 try:

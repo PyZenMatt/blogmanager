@@ -227,7 +227,8 @@ class PostAdmin(admin.ModelAdmin):
     list_display = ("id", "title", "slug", "clusters_display", "status", "published_at", "site")
     list_filter = ("status", "site", "published_at", "categories", "tags")
     # Removed SEO/meta fields from search as they are no longer model fields
-    search_fields = ("title", "slug", "body")
+    # 'body' is not a model field (we use 'content'), fix FieldError in admin search
+    search_fields = ("title", "slug", "content")
     autocomplete_fields = ("author", "categories")
     date_hierarchy = "published_at"
     prepopulated_fields = {"slug": ("title",)}
