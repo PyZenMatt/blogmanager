@@ -3,6 +3,9 @@ from django.dispatch import receiver
 import re
 import yaml
 from .models import Post, Category
+from django.utils.text import slugify as dj_slugify
+from django.db.utils import DataError
+import uuid
 
 fm_re = re.compile(r'^\s*---\s*\n([\s\S]*?)\n---\s*\n', re.M)
 
@@ -70,12 +73,60 @@ def ensure_categories_from_post(sender, instance, created, **kwargs):
 
     for c in cats:
         name_c = c
-        slug_c = name_c.replace(' ', '-').lower()
-        Category.objects.get_or_create(site_id=site_id, slug=slug_c, defaults={'name': name_c})
+        # Build a DB-safe slug: slugify, truncate to model field max_length and make unique per site
+        try:
+            max_len = Category._meta.get_field('slug').max_length or 50
+        except Exception:
+            max_len = 50
+
+        base_slug = dj_slugify(name_c) or 'category'
+        base_slug = base_slug[:max_len].strip('-')
+        candidate = base_slug
+        i = 2
+        while Category.objects.filter(site_id=site_id, slug=candidate).exists():
+            suffix = f"-{i}"
+            cut = max_len - len(suffix)
+            candidate = f"{base_slug[:cut].rstrip('-')}{suffix}"
+            i += 1
+
+        try:
+            Category.objects.get_or_create(site_id=site_id, slug=candidate, defaults={'name': name_c})
+        except DataError:
+            # As a last-resort, create a much shorter slug with uuid suffix
+            safe = (base_slug[: max_len - 9].rstrip('-') or 'cat') + '-' + uuid.uuid4().hex[:8]
+            safe = safe[:max_len]
+            try:
+                Category.objects.get_or_create(site_id=site_id, slug=safe, defaults={'name': name_c})
+            except Exception:
+                # Give up silently — this is best-effort during massive imports
+                pass
         for su in subs:
             name = f"{name_c}/{su}" if su and su != '(no-subcluster)' else name_c
-            slug = name.replace(' ', '-').lower()
-            Category.objects.get_or_create(site_id=site_id, slug=slug, defaults={'name': name})
+            # same process for combined category/subcluster name
+            try:
+                max_len = Category._meta.get_field('slug').max_length or 50
+            except Exception:
+                max_len = 50
+
+            base = dj_slugify(name) or 'category'
+            base = base[:max_len].strip('-')
+            cand = base
+            j = 2
+            while Category.objects.filter(site_id=site_id, slug=cand).exists():
+                suffix = f"-{j}"
+                cut = max_len - len(suffix)
+                cand = f"{base[:cut].rstrip('-')}{suffix}"
+                j += 1
+
+            try:
+                Category.objects.get_or_create(site_id=site_id, slug=cand, defaults={'name': name})
+            except DataError:
+                safe2 = (base[: max_len - 9].rstrip('-') or 'cat') + '-' + uuid.uuid4().hex[:8]
+                safe2 = safe2[:max_len]
+                try:
+                    Category.objects.get_or_create(site_id=site_id, slug=safe2, defaults={'name': name})
+                except Exception:
+                    pass
 from contextvars import ContextVar
 from contextlib import suppress
 import logging
