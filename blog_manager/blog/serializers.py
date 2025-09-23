@@ -131,6 +131,9 @@ class AuthorSerializer(serializers.ModelSerializer):
     class Meta:
         model = Author
         fields = ["id", "site", "name", "bio", "slug"]
+        extra_kwargs = {
+            "site": {"allow_null": True, "required": False},
+        }
 
 
 class CommentSerializer(serializers.ModelSerializer):

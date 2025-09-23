@@ -236,7 +236,8 @@ class Category(models.Model):
 
 
 class Author(models.Model):
-    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="authors")
+    # Allow authors to be global (not tied to a single site). Make `site` optional.
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="authors", null=True, blank=True)
     name = models.CharField(max_length=100)
     bio = models.TextField(blank=True)
     slug = models.SlugField()
@@ -248,9 +249,12 @@ class Author(models.Model):
 
     class Meta:
         ordering = ["id"]
-        unique_together = (("site", "slug"),)
+        # We no longer enforce uniqueness of (site, slug) because authors may be global.
+        # If you want site-scoped uniqueness, reintroduce a conditional constraint or
+        # enforce at the application level.
         indexes = [
-            models.Index(fields=["site", "slug"]),
+            # Keep an index on slug for lookups (not unique)
+            models.Index(fields=["slug"]),
         ]
 
 
