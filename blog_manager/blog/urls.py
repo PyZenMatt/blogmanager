@@ -26,3 +26,10 @@ from .views import TaxonomyView
 urlpatterns += [
     path('taxonomy/', TaxonomyView.as_view(), name='taxonomy-view'),
 ]
+
+# Site sync endpoints (start run + tail)
+from .views import SiteSyncAPIView, SiteSyncTailAPIView
+urlpatterns += [
+    path('sites/<int:pk>/sync/', SiteSyncAPIView.as_view(), name='site-sync'),
+    path('sites/<int:pk>/sync/tail/', SiteSyncTailAPIView.as_view(), name='site-sync-tail'),
+]

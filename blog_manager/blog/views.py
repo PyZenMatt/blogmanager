@@ -15,6 +15,9 @@ from rest_framework import filters, generics, decorators, permissions, response,
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.viewsets import ModelViewSet
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .models import Author, Category, Comment, Post, PostImage, Site, Tag
 from .permissions import IsPublisherForWriteOrReadOnly
@@ -427,3 +430,95 @@ class PostViewSet(ModelViewSet):
 
         # restituisci subito la risposta, evitando il doppio update
         return response.Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# --- Site sync API (start run and tail log) ---
+from django.views import View
+from django.http import JsonResponse
+import threading
+import os
+
+
+class SiteSyncAPIView(generics.GenericAPIView):
+    """Start a background sync_repos run for a given site.
+
+    POST body: { "mode": "dry-run"|"apply" }
+    Returns: { run_id, log_path, message }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk=None):
+        try:
+            site = Site.objects.get(pk=pk)
+        except Site.DoesNotExist:
+            return response.Response({'detail': 'Site not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        mode = request.data.get('mode') or request.POST.get('mode') or 'dry-run'
+        mode = 'apply' if str(mode).lower() == 'apply' else 'dry-run'
+
+        # prepare log file
+        logs_dir = os.path.join('reports', 'logs')
+        os.makedirs(logs_dir, exist_ok=True)
+        run_id = timezone.now().strftime('%Y%m%d%H%M%S')
+        log_path = os.path.join(logs_dir, f'sync-{site.slug}-{run_id}.log')
+
+        # Start background thread to run management command
+        def _runner(m=mode, lp=log_path, s=site):
+            old_env = dict(os.environ)
+            os.environ['SYNC_LOG_PATH'] = lp
+            try:
+                from django.core.management import call_command
+                if m == 'apply':
+                    call_command('sync_repos', '--apply', '--sites', s.slug)
+                else:
+                    call_command('sync_repos', '--dry-run', '--sites', s.slug)
+            except Exception:
+                logger.exception('Background sync run failed for site %s', s.slug)
+            finally:
+                os.environ.clear()
+                os.environ.update(old_env)
+
+        t = threading.Thread(target=_runner, daemon=True)
+        t.start()
+
+        # try to return initial tail if any
+        initial = None
+        try:
+            if os.path.exists(log_path):
+                with open(log_path, 'r', encoding='utf-8') as lf:
+                    initial = lf.read()[-32768:]
+        except Exception:
+            initial = None
+
+        return response.Response({'run_id': run_id, 'log_path': log_path, 'message': 'Background sync started', 'initial_log': initial})
+
+
+class SiteSyncTailAPIView(generics.GenericAPIView):
+    """Return tail of log for a given site run. Query param `run_id` or `path` may be used.
+
+    GET /api/blog/sites/<pk>/sync/tail/?run_id=... or &path=...
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk=None):
+        try:
+            site = Site.objects.get(pk=pk)
+        except Site.DoesNotExist:
+            return response.Response({'detail': 'Site not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        run_id = request.query_params.get('run_id')
+        path = request.query_params.get('path')
+        if not path and run_id:
+            logs_dir = os.path.join('reports', 'logs')
+            path = os.path.join(logs_dir, f'sync-{site.slug}-{run_id}.log')
+
+        if not path or not os.path.exists(path):
+            return response.Response({'status': 'missing', 'log': ''})
+
+        try:
+            with open(path, 'r', encoding='utf-8') as lf:
+                data = lf.read()
+            tail = data[-32768:]
+            return response.Response({'status': 'ok', 'log': tail})
+        except Exception:
+            return response.Response({'status': 'error', 'log': ''}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

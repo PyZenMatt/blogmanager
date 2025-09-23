@@ -60,7 +60,9 @@ def post_edit(request, id):
 
 @login_required
 def taxonomy(request):
-    return render(request, "writer/taxonomy.html")
+    from blog.models import Site
+    sites = Site.objects.all().order_by('id')
+    return render(request, "writer/taxonomy.html", { 'sites': sites })
 
 
 @login_required

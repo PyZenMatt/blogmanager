@@ -33,6 +33,49 @@
                     <div class="card-body">
                         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newSite">New Site</button>
                         <div id="sitesList" class="mt-3">Loading sites…</div>
+                        <!-- Server-side fallback list (visible if JS doesn't render quickly) -->
+                        <noscript>
+                            <div class="list-group">
+                            {% for s in sites %}
+                                <div class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <div class="fw-semibold">{{ s.name }}</div>
+                                        <div class="small text-muted">{{ s.domain }}</div>
+                                    </div>
+                                    <div>
+                                        <form method="post" action="/api/blog/sites/{{ s.id }}/sync/" style="display:inline-block;">{% csrf_token %}
+                                            <input type="hidden" name="mode" value="dry-run">
+                                            <button class="btn btn-sm btn-outline-info">Dry-run</button>
+                                        </form>
+                                        <form method="post" action="/api/blog/sites/{{ s.id }}/sync/" style="display:inline-block; margin-left:.5rem;">{% csrf_token %}
+                                            <input type="hidden" name="mode" value="apply">
+                                            <button class="btn btn-sm btn-outline-success">Apply</button>
+                                        </form>
+                                    </div>
+                                </div>
+                            {% empty %}
+                                <div class="alert alert-secondary">No sites configured</div>
+                            {% endfor %}
+                            </div>
+                        </noscript>
+                        <!-- Sync log modal -->
+                        <div class="modal fade" id="siteSyncLog" tabindex="-1">
+                            <div class="modal-dialog modal-xl">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Sync Log</h5>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="mb-2 small text-muted" id="siteSyncInfo"></div>
+                                        <pre id="siteSyncPre" style="height:60vh; overflow:auto; background:#111; color:#e6e6e6; padding:1rem; border-radius:4px;"></pre>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                        <button id="siteSyncStop" class="btn btn-danger">Stop Polling</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         <div class="modal fade" id="newSite" tabindex="-1">
                             <div class="modal-dialog modal-lg">
                                 <div class="modal-content">
@@ -135,6 +178,7 @@
                     <div class="card-header">Authors</div>
                     <div class="card-body">
                         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newAuthor">New Author</button>
+                        <div id="authorsList" class="mt-3">Loading authors…</div>
                         <div class="modal fade" id="newAuthor" tabindex="-1">
                             <div class="modal-dialog">
                                 <div class="modal-content">
@@ -316,13 +360,140 @@
     document.getElementById('authorForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        const payload = { site: Number(fd.get('site')), name: fd.get('name'), slug: fd.get('slug') || null };
+        const payload = { site: fd.get('site') ? Number(fd.get('site')) : null, name: fd.get('name'), slug: fd.get('slug') || null };
         const endpointA = (window.WriterAPI && window.WriterAPI.API && WriterAPI.API.AUTHORS) ? WriterAPI.API.AUTHORS : '/api/blog/authors/';
-        const res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(endpointA, { method: 'POST', body: JSON.stringify(payload) }) : await fetch(endpointA, {
-            method: 'POST', headers: { 'Content-Type':'application/json','X-CSRFToken': csrftoken },
+        // Support editing: if form.dataset.editingAuthorId or global _editingAuthorId present, PATCH
+        const form = e.target;
+        const editingId = window._editingAuthorId || form.dataset.editingAuthorId;
+        let url = endpointA;
+        let method = 'POST';
+        if (editingId) {
+            url = endpointA.replace(/\/$/, '') + '/' + encodeURIComponent(editingId) + '/';
+            method = 'PATCH';
+        }
+        const res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(url, { method, body: JSON.stringify(payload) }) : await fetch(url, {
+            method: method, headers: { 'Content-Type':'application/json','X-CSRFToken': csrftoken },
             credentials: 'same-origin', body: JSON.stringify(payload)
         });
-        if (res.ok) { location.reload(); } else { alert('Error creating author'); }
+        if (res.ok) { 
+            // close modal and refresh authors list
+            try { const modalEl = document.getElementById('newAuthor'); const bs = bootstrap.Modal.getInstance(modalEl); if (bs) bs.hide(); } catch (err) {}
+            try { delete form.dataset.editingAuthorId; window._editingAuthorId = null; document.querySelector('#newAuthor .modal-title').textContent = 'New Author'; } catch (err) {}
+            await populateAuthors();
+        } else { alert('Error creating/updating author'); }
+    });
+
+    // Populate authors list
+    async function populateAuthors() {
+        const container = document.getElementById('authorsList');
+        if (!container) return;
+        container.innerHTML = 'Loading authors…';
+        try {
+            const endpoint = (window.WriterAPI && window.WriterAPI.API && WriterAPI.API.AUTHORS) ? WriterAPI.API.AUTHORS : '/api/blog/authors/';
+            const res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(endpoint) : await fetch(endpoint);
+            if (!res.ok) throw new Error('authors fetch failed');
+            const data = await res.json();
+            const authors = Array.isArray(data) ? data : (data.results || []);
+            renderAuthorsInto(container, authors);
+        } catch (err) {
+            container.innerHTML = '<div class="alert alert-danger">Failed to load authors</div>';
+            console.error(err);
+        }
+    }
+
+    function renderAuthorsInto(container, authors) {
+        if (!authors || !authors.length) {
+            container.innerHTML = '<div class="alert alert-secondary">No authors</div>';
+            return;
+        }
+        const list = document.createElement('div');
+        list.className = 'list-group';
+        authors.forEach(a => {
+            const item = document.createElement('div');
+            item.className = 'list-group-item d-flex justify-content-between align-items-start';
+            const left = document.createElement('div');
+            const siteName = a.site ? (sitesById[a.site] ? sitesById[a.site].name : ('site#' + a.site)) : '<em>global</em>';
+            left.innerHTML = `<div class="fw-semibold">${a.name}</div><div class="small text-muted">${siteName}</div>`;
+            const right = document.createElement('div');
+            right.innerHTML = `<div class="btn-group" role="group"><button class="btn btn-sm btn-outline-secondary edit-author-btn" data-author-id="${a.id}">Edit</button><button class="btn btn-sm btn-outline-danger delete-author-btn" data-author-id="${a.id}">Delete</button></div>`;
+            item.appendChild(left);
+            item.appendChild(right);
+            list.appendChild(item);
+        });
+        container.innerHTML = '';
+        container.appendChild(list);
+    }
+
+    // When Authors tab is shown, load authors
+    const authorsTab = document.querySelector('#authors-tab');
+    if (authorsTab) {
+        authorsTab.addEventListener('shown.bs.tab', populateAuthors);
+    }
+
+    // Edit / Delete handlers for authors
+    document.addEventListener('click', async (e) => {
+        if (e.target && e.target.classList && e.target.classList.contains('edit-author-btn')) {
+            e.preventDefault();
+            const id = e.target.getAttribute('data-author-id');
+            // fetch author details and prefill form
+            try {
+                const endpoint = (window.WriterAPI && window.WriterAPI.API && WriterAPI.API.AUTHORS) ? WriterAPI.API.AUTHORS : '/api/blog/authors/';
+                const url = endpoint.replace(/\/$/, '') + '/' + encodeURIComponent(id) + '/';
+                const res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(url) : await fetch(url);
+                if (!res.ok) throw new Error('fetch author failed');
+                const a = await res.json();
+                const form = document.getElementById('authorForm');
+                form.dataset.editingAuthorId = id;
+                window._editingAuthorId = String(id);
+                form.querySelector('[name="site"]').value = a.site || '';
+                form.querySelector('[name="name"]').value = a.name || '';
+                form.querySelector('[name="slug"]').value = a.slug || '';
+                try { document.querySelector('#newAuthor .modal-title').textContent = 'Edit Author'; } catch (err) {}
+                const modalEl = document.getElementById('newAuthor');
+                const bs = bootstrap.Modal.getOrCreateInstance(modalEl);
+                bs.show();
+            } catch (err) {
+                alert('Failed to load author: ' + err);
+            }
+            return;
+        }
+        if (e.target && e.target.classList && e.target.classList.contains('delete-author-btn')) {
+            e.preventDefault();
+            const id = e.target.getAttribute('data-author-id');
+            if (!confirm('Delete author #' + id + '?')) return;
+            try {
+                const endpoint = (window.WriterAPI && window.WriterAPI.API && WriterAPI.API.AUTHORS) ? WriterAPI.API.AUTHORS : '/api/blog/authors/';
+                const url = endpoint.replace(/\/$/, '') + '/' + encodeURIComponent(id) + '/';
+                const res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(url, { method: 'DELETE' }) : await fetch(url, { method: 'DELETE', headers: { 'X-CSRFToken': csrftoken }, credentials: 'same-origin' });
+                if (res.ok || res.status === 204) {
+                    await populateAuthors();
+                    return;
+                }
+                let j = null; try { j = await res.json(); } catch (err) { j = null; }
+                alert('Delete failed: ' + (j && j.detail ? j.detail : res.statusText || res.status));
+            } catch (err) {
+                alert('Delete failed: ' + err);
+            }
+            return;
+        }
+    });
+
+    // Clear editing state when opening New Author modal
+    const newAuthorButtons = document.querySelectorAll('[data-bs-target="#newAuthor"]');
+    newAuthorButtons.forEach(btn => {
+        btn.addEventListener('click', (ev) => {
+            try {
+                const form = document.getElementById('authorForm');
+                if (form) {
+                    delete form.dataset.editingAuthorId;
+                    form.querySelector('[name="site"]').value = '';
+                    form.querySelector('[name="name"]').value = '';
+                    form.querySelector('[name="slug"]').value = '';
+                }
+            } catch (err) {}
+            window._editingAuthorId = null;
+            try { document.querySelector('#newAuthor .modal-title').textContent = 'New Author'; } catch (err) {}
+        });
     });
 
     // Load and render categories grouped by category/subcluster
@@ -471,6 +642,11 @@
             left.innerHTML = `<div class="fw-semibold">${site.name}</div><div class="small text-muted">${site.domain || ''}</div>`;
             const right = document.createElement('div');
             right.innerHTML = `<div class="btn-group" role="group"><button class="btn btn-sm btn-outline-secondary edit-site-btn" data-site-id="${site.id}">Edit</button><button class="btn btn-sm btn-outline-danger delete-site-btn" data-site-id="${site.id}">Delete</button></div>`;
+            // add sync buttons group
+            const syncGroup = document.createElement('div');
+            syncGroup.className = 'btn-group ms-2';
+            syncGroup.innerHTML = `<button class="btn btn-sm btn-outline-info site-sync-btn" data-site-id="${site.id}" data-mode="dry-run">Dry-run</button><button class="btn btn-sm btn-outline-success site-sync-btn" data-site-id="${site.id}" data-mode="apply">Apply</button>`;
+            right.appendChild(syncGroup);
             item.appendChild(left);
             item.appendChild(right);
             list.appendChild(item);
@@ -525,6 +701,57 @@
             } catch (err) {
                 alert('Delete failed: ' + err);
             }
+        }
+        // Site sync buttons
+        if (e.target && e.target.classList && e.target.classList.contains('site-sync-btn')) {
+            e.preventDefault();
+            const id = e.target.getAttribute('data-site-id');
+            const mode = e.target.getAttribute('data-mode') || 'dry-run';
+            const endpoint = (window.WriterAPI && window.WriterAPI.API && WriterAPI.API.TAXONOMY) ? WriterAPI.API.TAXONOMY : '/api/blog/';
+            // use site sync endpoint
+            const url = `/api/blog/sites/${encodeURIComponent(id)}/sync/`;
+            try {
+                const res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(url, { method: 'POST', body: JSON.stringify({ mode }) }) : await fetch(url, { method: 'POST', headers: { 'Content-Type':'application/json','X-CSRFToken': csrftoken }, credentials: 'same-origin', body: JSON.stringify({ mode }) });
+                if (!res.ok) {
+                    let j = null; try { j = await res.json(); } catch (err) { j = null; }
+                    return alert('Failed to start sync: ' + (j && j.detail ? j.detail : res.statusText || res.status));
+                }
+                const j = await res.json();
+                const runId = j.run_id;
+                const logPath = j.log_path;
+                // show modal and start polling
+                const pre = document.getElementById('siteSyncPre');
+                const info = document.getElementById('siteSyncInfo');
+                pre.textContent = j.initial_log || '';
+                info.textContent = `Site: ${sitesById[id] ? sitesById[id].name : id} — mode: ${mode} — run: ${runId}`;
+                const modalEl = document.getElementById('siteSyncLog');
+                const bs = bootstrap.Modal.getOrCreateInstance(modalEl);
+                bs.show();
+                let polling = true;
+                const stopBtn = document.getElementById('siteSyncStop');
+                const tailUrl = `/api/blog/sites/${encodeURIComponent(id)}/sync/tail/?run_id=${encodeURIComponent(runId)}`;
+                const poll = async () => {
+                    if (!polling) return;
+                    try {
+                        const r = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(tailUrl) : await fetch(tailUrl, { credentials: 'same-origin' });
+                        if (r.ok) {
+                            const data = await r.json();
+                            if (data && data.log !== undefined) {
+                                pre.textContent = data.log;
+                                pre.scrollTop = pre.scrollHeight;
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('poll tail failed', err);
+                    }
+                    if (polling) setTimeout(poll, 2000);
+                };
+                stopBtn.onclick = () => { polling = false; };
+                poll();
+            } catch (err) {
+                alert('Failed to start sync: ' + err);
+            }
+            return;
         }
     });
 
@@ -950,6 +1177,16 @@
     // Ensure site list is populated for the category filter and mapping
     // immediately (so loadCategories can reference `sitesById`).
     const populateSitesPromise = populateSites().catch(err => { console.warn('populateSites failed', err); return []; });
+    // After sites are loaded, pre-populate authors if the Authors tab is currently active
+    populateSitesPromise.then(() => {
+        try {
+            const active = document.querySelector('#authors-tab');
+            // if authors tab exists and is active, load authors immediately
+            if (active && active.classList.contains('active')) {
+                populateAuthors();
+            }
+        } catch (err) {}
+    });
 </script>
 </body>
 </html>
