@@ -32,18 +32,47 @@
                     <div class="card-header">Sites</div>
                     <div class="card-body">
                         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newSite">New Site</button>
+                        <div id="sitesList" class="mt-3">Loading sites…</div>
                         <div class="modal fade" id="newSite" tabindex="-1">
-                            <div class="modal-dialog">
+                            <div class="modal-dialog modal-lg">
                                 <div class="modal-content">
                                     <form id="siteForm">
                                         <div class="modal-header">
                                             <h5 class="modal-title">New Site</h5>
                                         </div>
                                         <div class="modal-body">
-                                            <label class="form-label">Name</label>
-                                            <input name="name" class="form-control" required>
-                                            <label class="form-label mt-2">Domain</label>
-                                            <input name="domain" class="form-control" required>
+                                            <div class="container-fluid">
+                                                <div class="row g-2">
+                                                    <div class="col-12 col-md-6">
+                                                        <label class="form-label">Name</label>
+                                                        <input name="name" class="form-control" required>
+                                                    </div>
+                                                    <div class="col-12 col-md-6">
+                                                        <label class="form-label">Domain</label>
+                                                        <input name="domain" class="form-control" required>
+                                                    </div>
+                                                    <div class="col-12 col-md-6">
+                                                        <label class="form-label mt-2">Slug (optional)</label>
+                                                        <input name="slug" class="form-control" placeholder="auto from name">
+                                                    </div>
+                                                    <div class="col-12 col-md-6">
+                                                        <label class="form-label mt-2">Default branch</label>
+                                                        <input name="default_branch" class="form-control" placeholder="main">
+                                                    </div>
+                                                    <div class="col-12 col-md-6">
+                                                        <label class="form-label mt-2">Repo owner</label>
+                                                        <input name="repo_owner" class="form-control" placeholder="github owner/org">
+                                                    </div>
+                                                    <div class="col-12 col-md-6">
+                                                        <label class="form-label mt-2">Repo name</label>
+                                                        <input name="repo_name" class="form-control" placeholder="github repo name">
+                                                    </div>
+                                                    <div class="col-12 col-md-6">
+                                                        <label class="form-label mt-2">Posts dir</label>
+                                                        <input name="posts_dir" class="form-control" placeholder="_posts">
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                         <div class="modal-footer">
                                             <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -147,6 +176,8 @@
     // map siteId -> site object (populated by populateSites)
     const sitesById = {};
     let __clusterCounter = 0;
+    // currently editing site id (string) when editing; null for create
+    window._editingSiteId = null;
 
     // Popola select Site nel modal Category
     async function populateSites() {
@@ -154,9 +185,24 @@
         const selAuthor = document.getElementById('siteSelectAuthor');
         if (selCat) selCat.innerHTML = '';
         if (selAuthor) selAuthor.innerHTML = '';
-    const res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(WriterAPI.API.SITES) : await fetch('/api/sites/');
+    // Try taxonomy endpoint first (it now returns a `sites` array). Fallback to /api/sites/.
+    let sites = [];
+    try {
+        const taxRes = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(WriterAPI.API.TAXONOMY) : await fetch('/api/blog/taxonomy/');
+        if (taxRes && taxRes.ok) {
+            const taxData = await taxRes.json();
+            if (taxData && Array.isArray(taxData.sites) && taxData.sites.length) {
+                sites = taxData.sites;
+            }
+        }
+    } catch (err) {
+        // ignore and fallback
+    }
+    if (!sites.length) {
+        const res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(WriterAPI.API.SITES) : await fetch('/api/sites/');
         const data = await res.json();
-        const sites = Array.isArray(data) ? data : (data.results || []);
+        sites = Array.isArray(data) ? data : (data.results || []);
+    }
         sites.forEach(site => {
             sitesById[site.id] = site;
             const opt = `<option value="${site.id}">${site.name}</option>`;
@@ -166,6 +212,13 @@
             const csf = document.getElementById('categoriesSiteFilter');
             if (csf) csf.insertAdjacentHTML('beforeend', opt);
         });
+            // render site list in the Sites tab
+            try {
+                const sitesContainer = document.getElementById('sitesList');
+                if (sitesContainer) renderSitesInto(sitesContainer, sites);
+            } catch (err) {
+                console.warn('renderSitesInto failed', err);
+            }
     }
     document.getElementById('newCategory').addEventListener('show.bs.modal', populateSites);
     document.getElementById('newAuthor').addEventListener('show.bs.modal', populateSites);
@@ -174,14 +227,76 @@
     document.getElementById('siteForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        const payload = { name: fd.get('name'), domain: fd.get('domain') };
-        const res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(WriterAPI.API.SITES, {
-            method: 'POST', body: JSON.stringify(payload)
-        }) : await fetch('/api/sites/', {
-            method: 'POST', headers: { 'Content-Type':'application/json','X-CSRFToken': csrftoken },
-            credentials: 'same-origin', body: JSON.stringify(payload)
+        // normalize domain to include scheme if missing
+        let domainVal = (fd.get('domain') || '').trim();
+        if (domainVal && !/^https?:\/\//i.test(domainVal)) {
+            domainVal = 'https://' + domainVal;
+        }
+        const payload = {
+            name: fd.get('name'),
+            domain: domainVal,
+            slug: fd.get('slug') || null,
+            repo_owner: fd.get('repo_owner') || '',
+            repo_name: fd.get('repo_name') || '',
+            posts_dir: fd.get('posts_dir') || '_posts',
+            default_branch: fd.get('default_branch') || 'main',
+        };
+        // clear previous errors
+        const form = e.target;
+        function clearErrors() {
+            form.querySelectorAll('.is-invalid').forEach(n => n.classList.remove('is-invalid'));
+            form.querySelectorAll('.invalid-feedback').forEach(n => n.remove());
+        }
+        clearErrors();
+
+        const doFetch = (url, opts) => (window.WriterAPI && window.WriterAPI.apiFetch) ? WriterAPI.apiFetch(url, opts) : fetch(url, opts);
+        const baseEndpoint = (window.WriterAPI && window.WriterAPI.API && WriterAPI.API.SITES) ? WriterAPI.API.SITES : '/api/sites/';
+        let url = baseEndpoint;
+        let method = 'POST';
+        // prefer global editing id (set by Edit button), fallback to form dataset
+        const editingId = window._editingSiteId || form.dataset.editingSiteId;
+        if (editingId) {
+            url = baseEndpoint.replace(/\/$/, '') + '/' + encodeURIComponent(editingId) + '/';
+            method = 'PATCH';
+        }
+        const res = await doFetch(url, {
+            method: method,
+            headers: { 'Content-Type':'application/json', 'X-CSRFToken': csrftoken },
+            credentials: 'same-origin',
+            body: JSON.stringify(payload)
         });
-        if (res.ok) { location.reload(); } else { alert('Error creating site'); }
+
+        if (res.ok) {
+            // success: close modal and refresh list
+            try { const modalEl = document.getElementById('newSite'); const bs = bootstrap.Modal.getInstance(modalEl); if (bs) bs.hide(); } catch (err) {}
+            // reset editing state
+            delete form.dataset.editingSiteId;
+            window._editingSiteId = null;
+            try { document.querySelector('#newSite .modal-title').textContent = 'New Site'; } catch (err) {}
+            await populateSites();
+            return;
+        }
+
+        // show server validation errors inline if available
+        let json = null;
+        try { json = await res.json(); } catch (err) { json = null; }
+        if (json && typeof json === 'object') {
+            // DRF validation errors usually a dict field-> [messages]
+            Object.keys(json).forEach(field => {
+                const input = form.querySelector(`[name="${field}"]`);
+                const msgs = Array.isArray(json[field]) ? json[field] : [String(json[field])];
+                if (input) {
+                    input.classList.add('is-invalid');
+                    const fb = document.createElement('div');
+                    fb.className = 'invalid-feedback';
+                    fb.textContent = msgs.join(' ');
+                    input.parentNode.insertBefore(fb, input.nextSibling);
+                }
+            });
+            return;
+        }
+
+        alert('Error creating site (server error)');
     });
 
     // Creazione Category
@@ -340,6 +455,93 @@
         container.innerHTML = '';
         container.appendChild(list);
     }
+
+    // Render list of sites into the Sites tab
+    function renderSitesInto(container, sites) {
+        if (!sites || !sites.length) {
+            container.innerHTML = '<div class="alert alert-secondary">No sites</div>';
+            return;
+        }
+        const list = document.createElement('div');
+        list.className = 'list-group';
+        sites.forEach(site => {
+            const item = document.createElement('div');
+            item.className = 'list-group-item d-flex justify-content-between align-items-start';
+            const left = document.createElement('div');
+            left.innerHTML = `<div class="fw-semibold">${site.name}</div><div class="small text-muted">${site.domain || ''}</div>`;
+            const right = document.createElement('div');
+            right.innerHTML = `<div class="btn-group" role="group"><button class="btn btn-sm btn-outline-secondary edit-site-btn" data-site-id="${site.id}">Edit</button><button class="btn btn-sm btn-outline-danger delete-site-btn" data-site-id="${site.id}">Delete</button></div>`;
+            item.appendChild(left);
+            item.appendChild(right);
+            list.appendChild(item);
+        });
+        container.innerHTML = '';
+        container.appendChild(list);
+    }
+
+    // Edit / Delete handlers for sites
+    document.addEventListener('click', async (e) => {
+        // Edit site: prefill modal and open
+        if (e.target && e.target.classList && e.target.classList.contains('edit-site-btn')) {
+            e.preventDefault();
+            const id = e.target.getAttribute('data-site-id');
+            const site = sitesById[id];
+            if (!site) return alert('Site data not loaded');
+            // populate form
+            const form = document.getElementById('siteForm');
+            form.dataset.editingSiteId = id;
+            window._editingSiteId = String(id);
+            form.querySelector('[name="name"]').value = site.name || '';
+            form.querySelector('[name="domain"]').value = site.domain || '';
+            const slugInput = form.querySelector('[name="slug"]'); if (slugInput) slugInput.value = site.slug || '';
+            const repoOwner = form.querySelector('[name="repo_owner"]'); if (repoOwner) repoOwner.value = site.repo_owner || '';
+            const repoName = form.querySelector('[name="repo_name"]'); if (repoName) repoName.value = site.repo_name || '';
+            const postsDir = form.querySelector('[name="posts_dir"]'); if (postsDir) postsDir.value = site.posts_dir || '';
+            const defBranch = form.querySelector('[name="default_branch"]'); if (defBranch) defBranch.value = site.default_branch || '';
+            // change modal title
+            try { document.querySelector('#newSite .modal-title').textContent = 'Edit Site'; } catch (err) {}
+            // show modal
+            try { const modalEl = document.getElementById('newSite'); const bs = bootstrap.Modal.getOrCreateInstance(modalEl); bs.show(); } catch (err) {}
+            return;
+        }
+
+        // Delete site
+        if (e.target && e.target.classList && e.target.classList.contains('delete-site-btn')) {
+            e.preventDefault();
+            const id = e.target.getAttribute('data-site-id');
+            if (!confirm('Delete site #' + id + '? This cannot be undone.')) return;
+            const endpointBase = (window.WriterAPI && window.WriterAPI.API && WriterAPI.API.SITES) ? WriterAPI.API.SITES : '/api/sites/';
+            const url = endpointBase.replace(/\/$/, '') + '/' + encodeURIComponent(id) + '/';
+            try {
+                const res = (window.WriterAPI && window.WriterAPI.apiFetch) ? await WriterAPI.apiFetch(url, { method: 'DELETE' }) : await fetch(url, { method: 'DELETE', headers: { 'X-CSRFToken': csrftoken }, credentials: 'same-origin' });
+                if (res.ok || res.status === 204) {
+                    // refresh list
+                    await populateSites();
+                    return;
+                }
+                let j = null;
+                try { j = await res.json(); } catch (err) { j = null; }
+                alert('Delete failed: ' + (j && j.detail ? j.detail : res.statusText || res.status));
+            } catch (err) {
+                alert('Delete failed: ' + err);
+            }
+        }
+    });
+
+    // When opening New Site via the dedicated button, clear editing state
+    const newSiteButtons = document.querySelectorAll('[data-bs-target="#newSite"]');
+    newSiteButtons.forEach(btn => {
+        btn.addEventListener('click', (ev) => {
+            try {
+                const form = document.getElementById('siteForm');
+                if (form) {
+                    delete form.dataset.editingSiteId;
+                }
+            } catch (err) {}
+            window._editingSiteId = null;
+            try { document.querySelector('#newSite .modal-title').textContent = 'New Site'; } catch (err) {}
+        });
+    });
 
     async function loadCategories() {
         const container = document.getElementById('categoriesList');

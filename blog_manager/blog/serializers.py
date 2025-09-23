@@ -91,7 +91,21 @@ class PostImageSerializer(serializers.ModelSerializer):
 class SiteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Site
-        fields = ["id", "name", "domain"]
+        # Expose additional editable fields so the UI can create a fully-configured Site
+        fields = [
+            "id",
+            "name",
+            "domain",
+            "slug",
+            "repo_path",
+            "repo_owner",
+            "repo_name",
+            "default_branch",
+            "posts_dir",
+            "media_dir",
+            "base_url",
+            "media_strategy",
+        ]
 
 
 class CategorySerializer(serializers.ModelSerializer):

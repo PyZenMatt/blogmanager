@@ -163,7 +163,14 @@ class TaxonomyView(generics.GenericAPIView):
                 subs_out.append({'name': su, 'count': len(items), 'examples': list(items)[:5]})
             resp.append({'category': catn, 'subclusters': subs_out})
 
-        return response.Response({'site': site or None, 'categories': resp})
+        # include available sites so the client can present site choices
+        try:
+            sites_qs = Site.objects.all()
+            sites_ser = SiteSerializer(sites_qs, many=True, context={'request': request}).data
+        except Exception:
+            sites_ser = []
+
+        return response.Response({'site': site or None, 'categories': resp, 'sites': sites_ser})
 
 
 # AUTHORS
