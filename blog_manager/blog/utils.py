@@ -2,8 +2,13 @@ import hashlib
 import re
 from typing import Dict, Any, List, Optional
 import yaml
-from django.utils.text import slugify
+from django.utils.text import slugify as dj_slugify
 from .models import Category
+from django.db.utils import DataError
+import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def build_jekyll_front_matter(post) -> Dict[str, Any]:
@@ -59,7 +64,7 @@ def extract_frontmatter(text: Optional[str]) -> Dict[str, Any]:
         return {}
 
 
-def create_categories_from_frontmatter(post, fields: List[str] = None, hierarchy: str = "slash") -> List[Category]:
+def create_categories_from_frontmatter(post, fields: Optional[List[str]] = None, hierarchy: str = "slash") -> List[Category]:
     """Create Category objects from a Post's front-matter and assign them to the post.
 
     Returns the list of Category instances created or found.
@@ -106,9 +111,37 @@ def create_categories_from_frontmatter(post, fields: List[str] = None, hierarchy
         for i in range(len(parts)):
             accum.append(parts[i])
             name = "/".join(accum) if len(accum) > 1 else accum[0]
-            slug = slugify(name.replace("/", "-").replace(">", "-"))
+
+            # Build DB-safe slug: slugify, replace separators, truncate to field max_length and ensure uniqueness
+            try:
+                max_len = Category._meta.get_field('slug').max_length or 50
+            except Exception:
+                max_len = 50
+
+            base = dj_slugify(name.replace("/", "-").replace(">", "-")) or 'category'
+            base = base[:max_len].strip('-')
+            candidate = base
+            j = 2
+            while Category.objects.filter(site=post.site, slug=candidate).exists():
+                suffix = f"-{j}"
+                cut = max_len - len(suffix)
+                candidate = f"{base[:cut].rstrip('-')}{suffix}"
+                j += 1
+
             defaults = {"name": name}
-            obj, created = Category.objects.get_or_create(site=post.site, slug=slug, defaults=defaults)
+            try:
+                obj, created = Category.objects.get_or_create(site=post.site, slug=candidate, defaults=defaults)
+            except DataError:
+                # fallback: short uuid-suffixed slug
+                safe = (base[: max_len - 9].rstrip('-') or 'cat') + '-' + uuid.uuid4().hex[:8]
+                safe = safe[:max_len]
+                try:
+                    obj, created = Category.objects.get_or_create(site=post.site, slug=safe, defaults=defaults)
+                    logger.warning("create_categories_from_frontmatter: slug truncated/fallback used for name=%s site=%s", name, getattr(post.site, 'slug', None))
+                except Exception:
+                    logger.exception("Failed to create Category for name=%s site=%s", name, getattr(post.site, 'slug', None))
+                    continue
+
             created_objs.append(obj)
 
     # assign unique categories to post

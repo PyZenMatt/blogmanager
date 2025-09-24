@@ -56,3 +56,24 @@ jekyll-test/
 
 #exporteed repos
 expoerted_repos/
+
+cat >> .gitignore << 'GIT'
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+# Ambienti locali
+.venv/
+venv/
+# Test/coverage
+.pytest_cache/
+.coverage
+htmlcov/
+# Build
+dist/
+build/
+# Cache varie
+.mypy_cache/
+.ruff_cache/
+.cache/
+GIT
