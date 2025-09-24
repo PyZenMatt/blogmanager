@@ -224,7 +224,7 @@ class PostImageInline(admin.TabularInline):
 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "slug", "clusters_display", "status", "published_at", "site")
+    list_display = ("id", "title", "slug", "slug_source", "clusters_display", "status", "published_at", "site")
     list_filter = ("status", "site", "published_at", "categories", "tags")
     # Removed SEO/meta fields from search as they are no longer model fields
     # 'body' is not a model field (we use 'content'), fix FieldError in admin search
@@ -234,6 +234,22 @@ class PostAdmin(admin.ModelAdmin):
     prepopulated_fields = {"slug": ("title",)}
     filter_horizontal = ("categories",)
     inlines = [PostImageInline]
+    readonly_fields = ("slug_source",)
+    # show a visible badge in the change form
+    def slug_source_badge(self, obj):
+        try:
+            src = getattr(obj, 'slug_source', 'db')
+            color = {
+                'front-matter': 'green',
+                'filename': 'blue',
+                'db': 'gray',
+            }.get(src, 'gray')
+            return format_html('<span style="background:{c};color:white;padding:2px 6px;border-radius:6px;font-weight:bold">{s}</span>', c=color, s=src)
+        except Exception:
+            return ''
+
+    slug_source_badge.short_description = 'Slug source'
+    readonly_fields = ("slug_source", "slug_source_badge")
     actions = ["admin_delete_posts"]
     # Add publish action
     actions += ["publish_posts"]
@@ -555,6 +571,23 @@ class PostAdmin(admin.ModelAdmin):
                 )
             except type(obj).DoesNotExist:
                 was_published = False
+        # Prevent changing slug if the post had slug_locked=True in DB
+        if change:
+            try:
+                db_old = type(obj).objects.get(pk=obj.pk)
+                if getattr(db_old, 'slug_locked', False):
+                    old_slug = getattr(db_old, 'slug', None)
+                    new_slug = getattr(obj, 'slug', None)
+                    if old_slug and new_slug and old_slug != new_slug:
+                        # Revert to old slug and inform admin
+                        obj.slug = old_slug
+                        self.message_user(
+                            request,
+                            "Slug immutabile: questo post è pubblicato. Il valore inserito per 'slug' è stato ignorato.",
+                            level=messages.WARNING,
+                        )
+            except Exception:
+                pass
 
         # salva subito sul DB (MySQL)
         super().save_model(request, obj, form, change)

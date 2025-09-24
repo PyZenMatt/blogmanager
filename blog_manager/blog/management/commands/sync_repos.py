@@ -10,6 +10,7 @@ import json
 import os
 import logging
 from blog.utils import create_categories_from_frontmatter
+import re
 import subprocess
 import shutil
 from django.core.management import call_command
@@ -194,6 +195,11 @@ class Command(BaseCommand):
                     md_files.append(f)
 
                 self.stdout.write(self.style.NOTICE(f"Site {site.slug}: found {len(md_files)} markdown files on GitHub; beginning processing"))
+                # First pass: fetch and parse all files to build a plan and run audit checks before any write
+                plan_items = []
+                site_warnings = []
+                from blog.utils import slug_from_filename
+
                 for fmeta in md_files:
                     full_path = fmeta.get("path") or ""
                     # Compute rel_path relative to posts_dir, prefer canonical rel path set during dedupe
@@ -208,42 +214,85 @@ class Command(BaseCommand):
                             # fallback: use basename
                             rel_path = os.path.basename(full_path) or full_path
 
-                    # skip if we've already processed this canonical path
                     if rel_path in processed_paths:
-                        self.stdout.write(self.style.WARNING(f"  Skipping already processed: {rel_path}"))
                         continue
 
-                    # guard gh_client
                     if not gh_client:
                         logger.warning("No GitHub client available for site %s despite files present", site.slug)
                         continue
 
-                    self.stdout.write(self.style.SQL_FIELD(f"  Processing: {rel_path}"))
                     try:
                         gf = gh_client.get_file(site.repo_owner, site.repo_name, full_path, branch=(site.default_branch or "main"))
                         content = gf.get("content") or ""
                         commit_sha = gf.get("sha")
-                    except GithubException as e:
+                    except Exception as e:
                         logger.exception("Failed to fetch %s from GitHub for site %s: %s", full_path, site.slug, e)
-                        continue
-                    except Exception:
-                        logger.exception("Unexpected error fetching %s from GitHub for site %s", full_path, site.slug)
                         continue
 
                     fm, body = sync_parser.split_front_matter(content)
-                    # Ensure non-empty content: prefer body, then common front-matter fields, then a placeholder
                     fallback_body = None
                     if isinstance(fm, dict):
                         fallback_body = fm.get("description") or fm.get("excerpt") or fm.get("summary")
                     if not (body and body.strip()):
                         body = (fallback_body or "").strip()
                     if not (body and body.strip()):
-                        # use title as a minimal placeholder to satisfy model validation
                         title_fallback = (fm.get("title") or os.path.splitext(os.path.basename(rel_path))[0].split("-", 1)[-1])
                         body = f"# {title_fallback}\n\n(Imported without body)"
+
                     h = sync_parser.compute_exported_hash(fm, body)
-                    # Match order: repo_path exact -> exported_hash (fallback) -> slug
-                    slug = fm.get("slug") or os.path.splitext(os.path.basename(rel_path))[0].split("-", 1)[-1]
+                    # Slug: prefer front-matter; otherwise use anchored filename fallback
+                    if isinstance(fm, dict) and fm.get("slug"):
+                        slug = fm.get("slug")
+                        slug_source = 'front_matter'
+                    else:
+                        slug = slug_from_filename(os.path.basename(rel_path))
+                        slug_source = 'filename'
+
+                    # Audit candidate slug for suspicious patterns
+                    s_normal = (slug or '').lower()
+                    reasons = []
+                    if re.match(r'^\d{2}-\d{2}-', s_normal):
+                        reasons.append('starts-with-partial-date')
+                    if len(s_normal) > 75:
+                        reasons.append('too-long')
+                    if re.search(r'[^a-z0-9-]', s_normal):
+                        reasons.append('invalid-chars')
+                    if reasons:
+                        site_warnings.append({"path": rel_path, "slug": slug, "reasons": reasons})
+
+                    plan_items.append({
+                        'rel_path': rel_path,
+                        'full_path': full_path,
+                        'content': content,
+                        'commit_sha': commit_sha,
+                        'fm': fm,
+                        'body': body,
+                        'hash': h,
+                        'slug': slug,
+                        'slug_source': slug_source,
+                    })
+
+                # If applying changes, abort if audit found warnings for this site
+                if apply_changes and site_warnings:
+                    self.stdout.write(self.style.ERROR(f"Aborting apply for site {site.slug}: slug audit found {len(site_warnings)} issues."))
+                    for w in site_warnings:
+                        self.stdout.write(self.style.ERROR(f"  {w['path']}: slug={w['slug']} reasons={w['reasons']}"))
+                    # Skip applying for this site
+                    report['sites'][site.slug] = site_report
+                    # mark processed to avoid partial changes
+                    continue
+
+                # Second pass: perform the same operations as before but using prepared plan_items
+                for item in plan_items:
+                    rel_path = item['rel_path']
+                    full_path = item['full_path']
+                    content = item['content']
+                    commit_sha = item['commit_sha']
+                    fm = item['fm']
+                    body = item['body']
+                    h = item['hash']
+                    slug = item['slug']
+                    # Match order: repo_path exact -> exported_hash -> slug
                     post = Post.objects.filter(site=site, repo_path=rel_path).first()
                     if not post:
                         post = Post.objects.filter(site=site, exported_hash=h).first()
@@ -253,20 +302,18 @@ class Command(BaseCommand):
                     if not post:
                         if rel_path in processed_paths:
                             continue
-                        title = fm.get("title") or slug
-                        author_name = fm.get("author")
-                        # Prefer exact repo_path match, fallback to title match only if no repo_path found
+                        title = (fm.get("title") if isinstance(fm, dict) else None) or slug
+                        author_name = fm.get("author") if isinstance(fm, dict) else None
                         existing = Post.objects.filter(site=site, repo_path=rel_path).first()
                         if not existing:
                             existing = Post.objects.filter(site=site, title__iexact=title).first()
                         if existing:
                             db_hash = existing.exported_hash or ""
-                            # mark processed early to avoid duplicate report entries
                             processed_paths.add(rel_path)
                             if db_hash != h:
                                 site_report["updated"].append({"path": rel_path, "hash": h, "post_id": existing.pk})
                                 if apply_changes:
-                                    Post.objects.filter(pk=existing.pk).update(content=body, exported_hash=h, last_exported_at=timezone.now(), repo_path=rel_path)
+                                    Post.objects.filter(pk=existing.pk).update(content=body, exported_hash=h, last_exported_at=timezone.now(), repo_path=rel_path, repo_filename=(full_path or os.path.join(posts_dir or '', rel_path)))
                             else:
                                 site_report["unchanged"].append({"path": rel_path, "hash": h, "post_id": existing.pk})
                             continue
@@ -276,8 +323,7 @@ class Command(BaseCommand):
                         self.stdout.write(self.style.SUCCESS(f"  Created planned: {rel_path}"))
                         if apply_changes:
                             from blog.models import Author
-                            # Preserve full original content (including front-matter) in Post.content
-                            p = Post(site=site, title=title, slug=slug, content=content or body, exported_hash=h, repo_path=rel_path)
+                            p = Post(site=site, title=title, slug=slug, content=content or body, exported_hash=h, repo_path=rel_path, repo_filename=(full_path or os.path.join(posts_dir or '', rel_path)))
                             assigned = False
                             if author_name:
                                 a = Author.objects.filter(name=author_name).first() or Author.objects.filter(slug=author_name).first()
@@ -293,8 +339,8 @@ class Command(BaseCommand):
                                 slug_def = 'imported'
                                 a, created = Author.objects.get_or_create(site=site, slug=slug_def, defaults={'name': 'Imported'})
                                 p.author = a
-                            status = fm.get("status") or "published"
-                            published_at = fm.get("date") or fm.get("published_at")
+                            status = (fm.get("status") if isinstance(fm, dict) else None) or "published"
+                            published_at = (fm.get("date") if isinstance(fm, dict) else None) or (fm.get("published_at") if isinstance(fm, dict) else None)
                             if status:
                                 p.status = status
                                 if status == "published":
@@ -308,21 +354,17 @@ class Command(BaseCommand):
                                             p.published_at = timezone.now()
                                     except Exception:
                                         p.published_at = timezone.now()
-                            # record commit sha/path when available
                             try:
                                 if commit_sha:
                                     p.last_commit_sha = commit_sha
-                                # store last_export_path as repo-relative path (posts_dir/rel_path)
                                 p.last_export_path = full_path or rel_path
                             except Exception:
                                 pass
-                            # Avoid triggering post_save export/publish hooks while importing
                             token = _SKIP_EXPORT.set(True)
                             try:
                                 p.save()
                             finally:
                                 _SKIP_EXPORT.reset(token)
-                            # create/assign categories from front-matter when importing
                             try:
                                 create_categories_from_frontmatter(p, fields=["categories", "cluster"], hierarchy="slash")
                             except Exception:
@@ -330,17 +372,35 @@ class Command(BaseCommand):
                             self.stdout.write(self.style.SUCCESS(f"  Created: {rel_path} (id={p.pk})"))
                     else:
                         db_hash = post.exported_hash or ""
+                        # Standardized mismatch logging: if the repo-derived slug differs from DB slug, log a clear message
+                        try:
+                            repo_slug_candidate = slug_from_filename(os.path.basename(rel_path)) if 'slug_from_filename' in globals() else None
+                            if repo_slug_candidate and repo_slug_candidate != (post.slug or ''):
+                                suggestion = 'rename+redirect' if post.slug_locked else 'align-front-matter-or-rename'
+                                msg = {
+                                    'type': 'slug_mismatch',
+                                    'post_id': post.pk,
+                                    'site': site.slug,
+                                    'repo_filename': rel_path,
+                                    'slug_db': post.slug,
+                                    'slug_repo': repo_slug_candidate,
+                                    'suggestion': suggestion,
+                                }
+                                self.stdout.write(self.style.WARNING(json.dumps(msg, ensure_ascii=False)))
+                        except Exception:
+                            pass
                         if db_hash != h:
                             site_report["updated"].append({"path": rel_path, "hash": h, "post_id": post.pk})
                             self.stdout.write(self.style.WARNING(f"  Update planned: {rel_path} -> post {post.pk}"))
                             if apply_changes:
                                 try:
                                     # Update content with full original content (including front-matter)
-                                    Post.objects.filter(pk=post.pk).update(
+                                        Post.objects.filter(pk=post.pk).update(
                                         content=content or (body or ""),
                                         exported_hash=h,
                                         last_exported_at=timezone.now(),
                                         repo_path=rel_path,
+                                        repo_filename=rel_path,
                                         last_commit_sha=commit_sha or post.last_commit_sha,
                                         last_export_path=full_path or post.last_export_path,
                                     )

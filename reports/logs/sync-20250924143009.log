@@ -1,0 +1,3 @@
+2025-09-24T14:30:09.138194+00:00 [31mStarting sync run 20250924143009 mode=dry-run; log=reports/logs/sync-20250924143009.log[0m
+2025-09-24T14:30:09.140716+00:00 [31mProcessing site matteoriccinet (mode=dry-run)[0m
+2025-09-24T14:30:10.128495+00:00 [31mSite matteoriccinet: found 18 markdown files on GitHub; beginning processing[0m

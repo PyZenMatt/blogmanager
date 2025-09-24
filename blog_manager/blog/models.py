@@ -263,6 +263,8 @@ class Post(models.Model):
     title = models.CharField(max_length=200)
     # Deve restare max_length=200; avoid MySQL-specific collation on SQLite
     slug = models.SlugField(max_length=200)
+    # When True the slug must not be changed (set automatically when published)
+    slug_locked = models.BooleanField(default=False)
     author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True)
     categories = models.ManyToManyField(Category, related_name="posts", blank=True)
     content = models.TextField()  # Markdown o HTML
@@ -374,6 +376,9 @@ class Post(models.Model):
         help_text="Timestamp dell'ultima esportazione",
     )
 
+    # Persist the repo-relative filename used during import/export (e.g. `_posts/2025-02-18-e-mc2-....md`)
+    repo_filename = models.CharField(max_length=255, null=True, blank=True, help_text="Percorso relativo del file nel repo (_posts/...) usato per import/export")
+
     # Compat alias: exporter usa export_hash ma il campo DB si chiama exported_hash
     @property
     def export_hash(self):  # pragma: no cover - semplice alias
@@ -443,6 +448,22 @@ class Post(models.Model):
                         "site": "Configura repo_path o crea directory fallback BLOG_REPO_BASE/<slug>."
                     })
 
+        # Enforce slug immutability when locked: if this instance exists in DB
+        # and slug_locked is True, disallow changing the slug value.
+        if getattr(self, 'pk', None) and getattr(self, 'slug_locked', False):
+            try:
+                old = type(self).objects.get(pk=self.pk)
+                old_slug = getattr(old, 'slug', None)
+            except Exception:
+                old_slug = None
+            new_slug = getattr(self, 'slug', None)
+            if old_slug and new_slug and old_slug != new_slug:
+                raise ValidationError({
+                    'slug': (
+                        'Slug immutabile: questo post è stato pubblicato. '
+                        'Per rinominarlo crea una nuova bozza o usa lo strumento di rename+redirect.'
+                    )
+                })
     # imports now at top-level
 
     @staticmethod
@@ -485,6 +506,8 @@ class Post(models.Model):
             # Allineiamo il flag legacy is_published
             if not self.is_published:
                 self.is_published = True
+            # Lock slug for published posts
+            self.slug_locked = True
         else:
             # Manteniamo coerenza: se non published lo stato booleano può restare False
             if self.is_published and self.status != "published":
@@ -506,6 +529,27 @@ class Post(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.site})"
+
+    @property
+    def slug_source(self):
+        """Return where the slug came from for this post: 'front-matter', 'filename' or 'db'"""
+        # If repo_filename is set and slug matches anchored filename-derived slug,
+        # consider filename as source; otherwise if exported_hash or last_export_path
+        # contains front-matter data we prefer front-matter. This is best-effort.
+        try:
+            if getattr(self, 'repo_filename', None):
+                # anchored filename pattern: _posts/YYYY-MM-DD-slug.md
+                m = re.match(r"^_posts/\d{4}-\d{2}-\d{2}-(.+)\.md$", self.repo_filename)
+                if m:
+                    fname_slug = m.group(1)
+                    if fname_slug == self.slug:
+                        return 'filename'
+        except Exception:
+            pass
+        # Fallback: if exported_hash or last_export_path present, assume front-matter
+        if self.exported_hash or self.last_export_path:
+            return 'front-matter'
+        return 'db'
 
 
 class ExportJob(models.Model):

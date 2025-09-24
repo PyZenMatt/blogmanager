@@ -8,6 +8,7 @@ from django.conf import settings
 import logging
 import shutil
 import pwd
+from blog.utils.export_validator import validate_repo_filenames
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +193,32 @@ def export_post(post):
 
     rel_path = rel_path.replace("\\", "/")  # normalize windows separators
     abs_path = os.path.join(repo_dir, rel_path)
+
+    # Pre-export validation: ensure filename follows _posts/YYYY-MM-DD-<slug>.md
+    try:
+        filename = os.path.basename(rel_path)
+        mval = re.match(r"^(\d{4}-\d{2}-\d{2})-(.+)\.md$", filename)
+        if not mval:
+            logger.error("[export][validator] Invalid filename '%s' for post id=%s; expected YYYY-MM-DD-<slug>.md. Export blocked.", rel_path, getattr(post, 'id', None))
+            return
+        fname_slug = mval.group(2)
+        # If the filename-derived slug and DB slug differ, never auto-rename published posts
+        if fname_slug != getattr(post, 'slug', None):
+            if getattr(post, 'slug_locked', False):
+                logger.error(
+                    "[export][validator] Slug mismatch for published post id=%s site=%s: slug_db=%r slug_repo=%r repo_path=%s. Export blocked. Use rename+redirect or align front-matter.",
+                    getattr(post, 'id', None), site_slug, getattr(post, 'slug', None), fname_slug, rel_path,
+                )
+                return
+            else:
+                logger.error(
+                    "[export][validator] Slug mismatch for post id=%s site=%s: slug_db=%r slug_repo=%r repo_path=%s. Export blocked; update front-matter or filename.",
+                    getattr(post, 'id', None), site_slug, getattr(post, 'slug', None), fname_slug, rel_path,
+                )
+                return
+    except Exception:
+        logger.exception("[export][validator] Unexpected validator error for post id=%s; aborting export.", getattr(post, 'id', None))
+        return
     if hasattr(post, "render_markdown"):
         content = post.render_markdown()
     else:
@@ -202,6 +229,16 @@ def export_post(post):
         content = fm + "\n" + body
 
     new_hash = hashlib.md5(content.encode("utf-8")).hexdigest()[:10]
+
+    # Run export_validator for this site before writing/pushing
+    try:
+        bad = validate_repo_filenames(site_slug=getattr(site, 'slug', None))
+        if bad:
+            logger.error("[export][validator] Pre-export validation failed for site %s; aborting export. First issue: %s", getattr(site, 'slug', None), bad[0])
+            return
+    except Exception:
+        logger.exception("[export][validator] Validator crashed; aborting export for post id=%s", getattr(post, 'id', None))
+        return
 
     # 2) Decisione scrittura
     need_write = (getattr(post, "export_hash", None) != new_hash) or (not os.path.exists(abs_path)) or (not _is_tracked(repo_dir, rel_path))
@@ -328,6 +365,12 @@ def export_post(post):
         changed.append("exported_at")
         post.last_export_path = rel_path
         changed.append("last_export_path")
+        # Persist repo_filename for future imports/export validation
+        try:
+            post.repo_filename = rel_path
+            changed.append("repo_filename")
+        except Exception:
+            pass
         # commit HEAD
         try:
             rc = _git(repo_dir, "rev-parse", "HEAD", check=False, quiet=True)

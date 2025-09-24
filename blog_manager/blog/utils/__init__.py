@@ -5,6 +5,24 @@ import yaml
 from typing import List, Optional
 from django.utils.text import slugify
 from .seo import slugify_title
+from django.utils.text import slugify as dj_slugify
+
+
+_FILENAME_FALLBACK_RE = re.compile(r'^\d{4}-\d{2}-\d{2}-(.+)$')
+
+
+def slug_from_filename(filename: str, max_len: int = 75) -> str:
+	if not filename:
+		return ''
+	base = filename.rsplit('/', 1)[-1]
+	base = base.rsplit('.', 1)[0]
+	m = _FILENAME_FALLBACK_RE.match(base)
+	if m:
+		candidate = m.group(1)
+	else:
+		candidate = base
+	cand = dj_slugify(candidate)[:max_len].strip('-') or candidate[:max_len]
+	return cand
 
 def build_jekyll_front_matter(post) -> Dict[str, Any]:
 	# Minimale (espandere secondo il vostro schema)

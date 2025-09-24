@@ -64,6 +64,28 @@ def extract_frontmatter(text: Optional[str]) -> Dict[str, Any]:
         return {}
 
 
+_FILENAME_FALLBACK_RE = re.compile(r'^\d{4}-\d{2}-\d{2}-(.+)$')
+
+
+def slug_from_filename(filename: str, max_len: int = 75) -> str:
+    """Extract slug candidate from a Jekyll-style filename anchoring the date prefix.
+
+    Example: '2025-02-18-e-mc2-xyz.md' -> 'e-mc2-xyz'
+    """
+    if not filename:
+        return ''
+    base = filename.rsplit('/', 1)[-1]
+    base = base.rsplit('.', 1)[0]
+    m = _FILENAME_FALLBACK_RE.match(base)
+    if m:
+        candidate = m.group(1)
+    else:
+        candidate = base
+    # Normalize
+    cand = dj_slugify(candidate)[:max_len].strip('-') or candidate[:max_len]
+    return cand
+
+
 def create_categories_from_frontmatter(post, fields: Optional[List[str]] = None, hierarchy: str = "slash") -> List[Category]:
     """Create Category objects from a Post's front-matter and assign them to the post.
 

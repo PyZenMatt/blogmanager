@@ -1,0 +1,23 @@
+2025-09-24T14:31:53.406065+00:00 [31mStarting sync run 20250924143153 mode=dry-run; log=reports/logs/sync-20250924143153.log[0m
+2025-09-24T14:31:53.408012+00:00 [31mProcessing site matteoriccinet (mode=dry-run)[0m
+2025-09-24T14:31:54.299043+00:00 [31mSite matteoriccinet: found 18 markdown files on GitHub; beginning processing[0m
+2025-09-24T14:32:14.003496+00:00 [32;1m  Created planned: 2025-08-07-cose-django-e-perche-usarlo.md[0m
+2025-09-24T14:32:14.005880+00:00 [32;1m  Created planned: 2025-08-12-tipi-di-dato-base-in-python-str-int-float-bool.md[0m
+2025-09-24T14:32:14.008217+00:00 [32;1m  Created planned: 2025-08-13-tipi-di-dato-base-in-python-list-tuple-set-e-dict.md[0m
+2025-09-24T14:32:14.010370+00:00 [32;1m  Created planned: 2025-08-16-case-study-django-blockchain-backend-schoolplatform-drf-jwt-web3py.md[0m
+2025-09-24T14:32:14.013417+00:00 [32;1m  Created planned: 2025-08-16-django-vs-node-fastapi-per-lms.md[0m
+2025-09-24T14:32:14.016286+00:00 [32;1m  Created planned: 2025-08-17-django-struttura-dei-file-generati-da-startproj.md[0m
+2025-09-24T14:32:14.018575+00:00 [32;1m  Created planned: 2025-08-18-costruire-llm-con-django.md[0m
+2025-09-24T14:32:14.021440+00:00 [32;1m  Created planned: 2025-08-20-refactoring-django-investimento.md[0m
+2025-09-24T14:32:14.023905+00:00 [32;1m  Created planned: 2025-08-24-frontend-brutto-va-bene-cosi.md[0m
+2025-09-24T14:32:14.026234+00:00 [32;1m  Created planned: 2025-08-24-vite-vs-create-react-app-cosa-ho-imparato.md[0m
+2025-09-24T14:32:14.028844+00:00 [32;1m  Created planned: 2025-08-25-figma-react-vite-schoolplatform.md[0m
+2025-09-24T14:32:14.032130+00:00 [32;1m  Created planned: 2025-08-27-frontend-brutto-ma-va-bene-cosi.md[0m
+2025-09-24T14:32:14.034542+00:00 [32;1m  Created planned: 2025-08-27-vite-vs-create-react-app-cosa-ho-imparato.md[0m
+2025-09-24T14:32:14.036823+00:00 [32;1m  Created planned: 2025-08-31-erc20-lms-django-polygon.md[0m
+2025-09-24T14:32:14.039739+00:00 [32;1m  Created planned: 2025-09-02-blockchain-app-non-cripto.md[0m
+2025-09-24T14:32:14.042917+00:00 [32;1m  Created planned: 2025-09-05-blockchain-formazione-valore-reale.md[0m
+2025-09-24T14:32:14.046348+00:00 [32;1m  Created planned: 2025-09-17-altro-piccolo-momento-di-verita.md[0m
+2025-09-24T14:32:14.050509+00:00 [32;1m  Created planned: 2025-09-20-cos-e-un-rag.md[0m
+2025-09-24T14:32:14.051387+00:00 [32;1mSite matteoriccinet: created=18 updated=0 unchanged=0 (from GitHub). github_files=18 db_repo_paths=0[0m
+2025-09-24T14:32:14.051765+00:00 [32;1mReport written to reports/sync-report-20250924143153.json[0m

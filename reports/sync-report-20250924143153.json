@@ -1,0 +1,105 @@
+{
+  "run_id": "20250924143153",
+  "sites": {
+    "matteoriccinet": {
+      "created": [
+        {
+          "path": "2025-08-07-cose-django-e-perche-usarlo.md",
+          "hash": "eb76bdd5b6",
+          "slug": "cose-django-e-perche-usarlo"
+        },
+        {
+          "path": "2025-08-12-tipi-di-dato-base-in-python-str-int-float-bool.md",
+          "hash": "274e5ad683",
+          "slug": "tipi-di-dato-base-in-python-str-int-float-bool-con-esempi-chiari"
+        },
+        {
+          "path": "2025-08-13-tipi-di-dato-base-in-python-list-tuple-set-e-dict.md",
+          "hash": "a93e67fc01",
+          "slug": "tipi-di-dato-base-in-python-list-tuple-set-e-dict-differenze-e-quando-usarli"
+        },
+        {
+          "path": "2025-08-16-case-study-django-blockchain-backend-schoolplatform-drf-jwt-web3py.md",
+          "hash": "7ddb879afc",
+          "slug": "case-study-django-blockchain-backend-schoolplatform-drf-jwt-web3py"
+        },
+        {
+          "path": "2025-08-16-django-vs-node-fastapi-per-lms.md",
+          "hash": "82ec7c5e95",
+          "slug": "django-vs-node-fastapi-per-lms"
+        },
+        {
+          "path": "2025-08-17-django-struttura-dei-file-generati-da-startproj.md",
+          "hash": "29de392800",
+          "slug": "django-51-struttura-dei-file-generati-da-startproject-e-startapp-con-esempi-pratici"
+        },
+        {
+          "path": "2025-08-18-costruire-llm-con-django.md",
+          "hash": "303eea2b3e",
+          "slug": "perche-costruire-un-lms-con-django-nel-2025-e-quando-non-farlo"
+        },
+        {
+          "path": "2025-08-20-refactoring-django-investimento.md",
+          "hash": "0fe2a99069",
+          "slug": "refactoring-investimento-schoolplatform"
+        },
+        {
+          "path": "2025-08-24-frontend-brutto-va-bene-cosi.md",
+          "hash": "428e733a8b",
+          "slug": "frontend-brutto-va-bene-cosi"
+        },
+        {
+          "path": "2025-08-24-vite-vs-create-react-app-cosa-ho-imparato.md",
+          "hash": "05ac02ea18",
+          "slug": "vite-vs-create-react-app-cosa-ho-imparato"
+        },
+        {
+          "path": "2025-08-25-figma-react-vite-schoolplatform.md",
+          "hash": "76ae892dc9",
+          "slug": "figma-react-vite-schoolplatform"
+        },
+        {
+          "path": "2025-08-27-frontend-brutto-ma-va-bene-cosi.md",
+          "hash": "9ff83b334c",
+          "slug": "frontend-mvp-refactor-vs-rewrite"
+        },
+        {
+          "path": "2025-08-27-vite-vs-create-react-app-cosa-ho-imparato.md",
+          "hash": "53e89b3548",
+          "slug": "vite-vs-create-react-app-cosa-ho-imparato"
+        },
+        {
+          "path": "2025-08-31-erc20-lms-django-polygon.md",
+          "hash": "f56f055427",
+          "slug": "erc20-lms-django-polygon"
+        },
+        {
+          "path": "2025-09-02-blockchain-app-non-cripto.md",
+          "hash": "229f5896e4",
+          "slug": "blockchain-app-non-cripto"
+        },
+        {
+          "path": "2025-09-05-blockchain-formazione-valore-reale.md",
+          "hash": "d22f88056e",
+          "slug": "blockchain-formazione-valore-reale"
+        },
+        {
+          "path": "2025-09-17-altro-piccolo-momento-di-verita.md",
+          "hash": "4957b001e4",
+          "slug": "altro-piccolo-momento-di-verita"
+        },
+        {
+          "path": "2025-09-20-cos-e-un-rag.md",
+          "hash": "35f105260f",
+          "slug": "cos-e-un-rag"
+        }
+      ],
+      "updated": [],
+      "unchanged": [],
+      "_meta": {
+        "unique_github_files": 18,
+        "db_repo_paths": 0
+      }
+    }
+  }
+}
