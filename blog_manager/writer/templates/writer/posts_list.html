@@ -17,10 +17,11 @@
       .table thead th:nth-child(2),
       .table thead th:nth-child(5),
       .table thead th:nth-child(6),
-      .table tbody td:nth-child(1),
-      .table tbody td:nth-child(2),
-      .table tbody td:nth-child(5),
-      .table tbody td:nth-child(6) {
+      /* Do not hide td inside rows with class .card-row (mobile card layout uses a single td with colspan) */
+      .table tbody tr:not(.card-row) td:nth-child(1),
+      .table tbody tr:not(.card-row) td:nth-child(2),
+      .table tbody tr:not(.card-row) td:nth-child(5),
+      .table tbody tr:not(.card-row) td:nth-child(6) {
         display: none !important;
       }
 
@@ -425,6 +426,7 @@ if (typeof WriterAPI === 'undefined') {
     if(list.length===0){ rows.innerHTML = `<tr><td colspan="7" class="text-center p-4">Nessun risultato</td></tr>`; return; }
     list.forEach(p=>{
       const card = document.createElement('tr');
+      card.classList.add('card-row');
       card.innerHTML = `
         <td colspan="7">
           <div class="card mb-2">

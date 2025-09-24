@@ -640,13 +640,32 @@
             item.className = 'list-group-item d-flex justify-content-between align-items-start';
             const left = document.createElement('div');
             left.innerHTML = `<div class="fw-semibold">${site.name}</div><div class="small text-muted">${site.domain || ''}</div>`;
-            const right = document.createElement('div');
-            right.innerHTML = `<div class="btn-group" role="group"><button class="btn btn-sm btn-outline-secondary edit-site-btn" data-site-id="${site.id}">Edit</button><button class="btn btn-sm btn-outline-danger delete-site-btn" data-site-id="${site.id}">Delete</button></div>`;
-            // add sync buttons group
-            const syncGroup = document.createElement('div');
-            syncGroup.className = 'btn-group ms-2';
-            syncGroup.innerHTML = `<button class="btn btn-sm btn-outline-info site-sync-btn" data-site-id="${site.id}" data-mode="dry-run">Dry-run</button><button class="btn btn-sm btn-outline-success site-sync-btn" data-site-id="${site.id}" data-mode="apply">Apply</button>`;
-            right.appendChild(syncGroup);
+                        const right = document.createElement('div');
+                        // On small screens, collapse the action buttons into a single "Actions" dropdown
+                        const isSmall = (window.matchMedia && window.matchMedia('(max-width:768px)').matches);
+                        if (isSmall) {
+                                right.innerHTML = `
+                                        <div class="btn-group ms-2">
+                                            <div class="dropdown">
+                                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Actions</button>
+                                                <ul class="dropdown-menu dropdown-menu-end">
+                                                    <li><button class="dropdown-item edit-site-btn" data-site-id="${site.id}">Edit</button></li>
+                                                    <li><button class="dropdown-item delete-site-btn" data-site-id="${site.id}">Delete</button></li>
+                                                    <li><hr class="dropdown-divider"></li>
+                                                    <li><button class="dropdown-item site-sync-btn" data-site-id="${site.id}" data-mode="dry-run">Dry-run</button></li>
+                                                    <li><button class="dropdown-item site-sync-btn" data-site-id="${site.id}" data-mode="apply">Apply</button></li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                `;
+                        } else {
+                                right.innerHTML = `<div class="btn-group" role="group"><button class="btn btn-sm btn-outline-secondary edit-site-btn" data-site-id="${site.id}">Edit</button><button class="btn btn-sm btn-outline-danger delete-site-btn" data-site-id="${site.id}">Delete</button></div>`;
+                                // add sync buttons group for desktop
+                                const syncGroup = document.createElement('div');
+                                syncGroup.className = 'btn-group ms-2';
+                                syncGroup.innerHTML = `<button class="btn btn-sm btn-outline-info site-sync-btn" data-site-id="${site.id}" data-mode="dry-run">Dry-run</button><button class="btn btn-sm btn-outline-success site-sync-btn" data-site-id="${site.id}" data-mode="apply">Apply</button>`;
+                                right.appendChild(syncGroup);
+                        }
             item.appendChild(left);
             item.appendChild(right);
             list.appendChild(item);
@@ -1186,6 +1205,21 @@
                 populateAuthors();
             }
         } catch (err) {}
+    });
+
+    // Re-render Sites actions on resize to toggle dropdown vs inline buttons
+    let _sitesLastSmall = (window.matchMedia && window.matchMedia('(max-width:768px)').matches);
+    function _maybeReflowSites() {
+        const isSmall = (window.matchMedia && window.matchMedia('(max-width:768px)').matches);
+        if (isSmall === _sitesLastSmall) return;
+        _sitesLastSmall = isSmall;
+        // force re-populate of sites list to apply new markup
+        populateSites().catch(err => console.warn('populateSites reflow failed', err));
+    }
+    window.addEventListener('resize', () => {
+        // debounce
+        clearTimeout(window._siteReflowTimer);
+        window._siteReflowTimer = setTimeout(_maybeReflowSites, 150);
     });
 </script>
 </body>
