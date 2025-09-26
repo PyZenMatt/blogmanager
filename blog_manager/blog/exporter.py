@@ -367,13 +367,17 @@ def export_post(post):
         changed.append("last_export_path")
         # Persist repo_filename for future imports/export validation
         try:
-            # Avoid persisting repo_filename in DB if the column is absent.
-            # Use an in-memory attribute so code depending on post.repo_filename
-            # continues to work until the schema is reconciled.
-            setattr(post, '_repo_filename', rel_path)
-            # Do not append to changed so we skip including repo_filename in update()
+            # Persist repo_filename so future imports/exports can validate using the
+            # actual filename. The DB column was added during the remediation steps.
+            post.repo_filename = rel_path
+            changed.append("repo_filename")
         except Exception:
-            pass
+            # If for any reason the field cannot be set (older DB), fall back to
+            # in-memory attribute to preserve behavior until schema is reconciled.
+            try:
+                setattr(post, '_repo_filename', rel_path)
+            except Exception:
+                pass
         # commit HEAD
         try:
             rc = _git(repo_dir, "rev-parse", "HEAD", check=False, quiet=True)

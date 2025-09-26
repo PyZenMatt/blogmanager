@@ -263,22 +263,9 @@ class Post(models.Model):
     title = models.CharField(max_length=200)
     # Deve restare max_length=200; avoid MySQL-specific collation on SQLite
     slug = models.SlugField(max_length=200)
-    # NOTE (EMERGENCY SHIM): production schema may be missing the concrete
-    # `slug_locked` column (migrations out-of-sync). To avoid Immediate 500s
-    # caused by Django trying to SELECT that column, provide a temporary
-    # in-memory property that user code can read/write without hitting the DB.
-    # This is a short-lived compatibility shim — once the DB schema is
-    # reconciled, revert this to the real BooleanField declared in the
-    # migration file (00xx_add_slug_locked.py).
-    @property
-    def slug_locked(self):
-        return getattr(self, '_slug_locked', False)
-
-    @slug_locked.setter
-    def slug_locked(self, value):
-        # keep a non-persistent flag on the instance so callers that set
-        # slug_locked (e.g. during save()) still behave in-Python.
-        self._slug_locked = bool(value)
+    # Persisted flag indicating the slug has been locked (immutable) after publish.
+    # This maps to the migration that adds the concrete DB column (00xx_add_slug_locked.py).
+    slug_locked = models.BooleanField(default=False)
     author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True)
     categories = models.ManyToManyField(Category, related_name="posts", blank=True)
     content = models.TextField()  # Markdown o HTML
@@ -390,19 +377,14 @@ class Post(models.Model):
         help_text="Timestamp dell'ultima esportazione",
     )
 
-    # NOTE (EMERGENCY SHIM): production schema may be missing the concrete
-    # `repo_filename` column (migrations out-of-sync). To avoid OperationalError
-    # when selecting Posts, provide a temporary in-memory property exposing the
-    # same attribute name used by the rest of the code. This keeps runtime
-    # behavior similar while avoiding DB column access. Revert once the DB is
-    # reconciled and the migration is applied.
-    @property
-    def repo_filename(self):
-        return getattr(self, '_repo_filename', None)
-
-    @repo_filename.setter
-    def repo_filename(self, value):
-        self._repo_filename = value if value is not None else None
+    # Path to the file in the repo (eg. "_posts/2025-01-01-slug.md").
+    # This column was recently added via migration and should be present in prod.
+    repo_filename = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Percorso del file nel repo Jekyll (es. _posts/YYYY-MM-DD-slug.md)",
+    )
 
     # Compat alias: exporter usa export_hash ma il campo DB si chiama exported_hash
     @property
