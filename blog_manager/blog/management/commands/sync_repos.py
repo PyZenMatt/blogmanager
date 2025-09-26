@@ -19,6 +19,123 @@ from blog.models import ExportAudit
 logger = logging.getLogger(__name__)
 
 
+def _status_from_fm(fm):
+    """Interpret front-matter to derive status.
+
+    Rules:
+    - If fm contains explicit 'status' key, return it as-is.
+    - Else if fm contains 'published' key, treat booleans and common strings
+      ('false', 'no', '0') as draft, truthy strings as published.
+    - Otherwise default to 'published' (existing behaviour for imports).
+    """
+    if not isinstance(fm, dict):
+        return "published"
+    if "status" in fm:
+        s = fm.get("status")
+        try:
+            return str(s).strip().lower()
+        except Exception:
+            return s
+    if "published" in fm:
+        val = fm.get("published")
+        # booleans
+        if isinstance(val, bool):
+            return "published" if val else "draft"
+        # strings like 'false', 'no', '0'
+        try:
+            s = str(val).strip().lower()
+        except Exception:
+            return "published"
+        if s in ("false", "f", "no", "n", "0", "off"):
+            return "draft"
+        if s in ("true", "t", "yes", "y", "1", "on"):
+            return "published"
+        # fallback: treat non-empty as published
+        if s:
+            return "published"
+        return "draft"
+    # If no explicit status/published field, default to published
+    return "published"
+
+
+def _parse_fm_date(val):
+    """Parse common front-matter date values into a timezone-aware datetime.
+
+    Accepts ISO datetimes, date-only strings (YYYY-MM-DD), and datetimes.
+    Returns a timezone-aware datetime or None on failure.
+    """
+    if not val:
+        return None
+    try:
+        # prefer django's parse_datetime for iso-like strings
+        from django.utils.dateparse import parse_datetime, parse_date
+        dt = parse_datetime(val) if isinstance(val, str) else None
+        if dt:
+            # make timezone-aware if naive
+            from django.utils import timezone as _tz
+            if timezone.is_naive(dt):
+                try:
+                    dt = _tz.make_aware(dt, _tz.get_current_timezone())
+                except Exception:
+                    dt = _tz.make_aware(dt)
+            return dt
+        # fallback: parse date-only strings
+        d = parse_date(val) if isinstance(val, str) else None
+        if d:
+            # convert date to datetime at midnight local tz
+            from datetime import datetime
+            from django.utils import timezone as _tz
+            dt = datetime(d.year, d.month, d.day, 0, 0, 0)
+            try:
+                dt = _tz.make_aware(dt, _tz.get_current_timezone())
+            except Exception:
+                dt = _tz.make_aware(dt)
+            return dt
+        # if val is already a datetime object
+        import datetime as _dt
+        if isinstance(val, _dt.datetime):
+            from django.utils import timezone as _tz
+            if timezone.is_naive(val):
+                try:
+                    val = _tz.make_aware(val, _tz.get_current_timezone())
+                except Exception:
+                    val = _tz.make_aware(val)
+            return val
+    except Exception:
+        pass
+    return None
+
+
+def _extract_date_from_relpath_or_body(rel_path, content=None):
+    """Try to extract a date from the filename (YYYY-MM-DD) or from the start of the content.
+
+    Returns a timezone-aware datetime or None.
+    """
+    # Try filename first: _posts/YYYY-MM-DD-slug.md or YYYY-MM-DD-slug.md
+    try:
+        m = re.search(r"(\d{4}-\d{2}-\d{2})", rel_path or "")
+        if m:
+            return _parse_fm_date(m.group(1))
+    except Exception:
+        pass
+    # Next, scan the first ~20 lines of content for a date-like string
+    if content:
+        try:
+            lines = content.splitlines()[:20]
+            for ln in lines:
+                # common patterns: 'Date: 2025-08-13', '2025-08-13', or '2025/08/13'
+                m = re.search(r"(\d{4}-\d{2}-\d{2})", ln)
+                if m:
+                    return _parse_fm_date(m.group(1))
+                m2 = re.search(r"(\d{4}/\d{2}/\d{2})", ln)
+                if m2:
+                    # convert slashes to dashes
+                    return _parse_fm_date(m2.group(1).replace('/', '-'))
+        except Exception:
+            pass
+    return None
+
+
 class Command(BaseCommand):
     help = "Scan configured repos and sync posts into DB (repo->DB). By default runs as dry-run."
 
@@ -353,19 +470,23 @@ class Command(BaseCommand):
                                 slug_def = 'imported'
                                 a, created = Author.objects.get_or_create(site=site, slug=slug_def, defaults={'name': 'Imported'})
                                 p.author = a
-                            status = (fm.get("status") if isinstance(fm, dict) else None) or "published"
-                            published_at = (fm.get("date") if isinstance(fm, dict) else None) or (fm.get("published_at") if isinstance(fm, dict) else None)
+                            status = _status_from_fm(fm)
+                            # Determine published_at from front-matter if provided
+                            published_at_raw = None
+                            if isinstance(fm, dict):
+                                published_at_raw = fm.get("date") or fm.get("published_at")
+                            dt = _parse_fm_date(published_at_raw)
+                            # fallback: try to infer date from filename or content
+                            if not dt:
+                                try:
+                                    dt = _extract_date_from_relpath_or_body(rel_path, content or body)
+                                except Exception:
+                                    dt = None
                             if status:
                                 p.status = status
                                 if status == "published":
                                     try:
-                                        from django.utils.dateparse import parse_datetime
-
-                                        dt = parse_datetime(published_at) if published_at else None
-                                        if dt:
-                                            p.published_at = dt
-                                        else:
-                                            p.published_at = timezone.now()
+                                        p.published_at = dt or timezone.now()
                                     except Exception:
                                         p.published_at = timezone.now()
                             try:
@@ -410,8 +531,10 @@ class Command(BaseCommand):
                                 try:
                                     # Update content with full original content (including front-matter)
                                         try:
-                                            # Include repo_filename when updating so DB reflects source file
-                                            Post.objects.filter(pk=post.pk).update(
+                                            # Include repo_filename and published_at when updating so DB reflects source file
+                                            published_at_raw = fm.get("date") if isinstance(fm, dict) else None
+                                            published_dt = _parse_fm_date(published_at_raw)
+                                            update_kwargs = dict(
                                                 content=content or (body or ""),
                                                 exported_hash=h,
                                                 last_exported_at=timezone.now(),
@@ -420,6 +543,10 @@ class Command(BaseCommand):
                                                 last_export_path=full_path or post.last_export_path,
                                                 repo_filename=(full_path or post.repo_filename),
                                             )
+                                            # Only set published_at if parsed successfully
+                                            if published_dt:
+                                                update_kwargs["published_at"] = published_dt
+                                            Post.objects.filter(pk=post.pk).update(**update_kwargs)
                                         except Exception:
                                             logger.exception("Failed to update post %s with repo_filename; retrying without it", post.pk)
                                             try:
@@ -564,7 +691,7 @@ class Command(BaseCommand):
                         # create Post with optional front-matter enrichment
                         author_name = fm.get("author")
                         # Default to published when importing from repo (repo content is typically published)
-                        status = fm.get("status") or "published"
+                        status = _status_from_fm(fm)
                         published_at = fm.get("date") or fm.get("published_at")
                         # Create Post and record repo path immediately
                         p = Post(site=site, title=title, slug=slug, content=body or "", exported_hash=h, repo_path=rel_path)
