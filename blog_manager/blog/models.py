@@ -390,8 +390,19 @@ class Post(models.Model):
         help_text="Timestamp dell'ultima esportazione",
     )
 
-    # Persist the repo-relative filename used during import/export (e.g. `_posts/2025-02-18-e-mc2-....md`)
-    repo_filename = models.CharField(max_length=255, null=True, blank=True, help_text="Percorso relativo del file nel repo (_posts/...) usato per import/export")
+    # NOTE (EMERGENCY SHIM): production schema may be missing the concrete
+    # `repo_filename` column (migrations out-of-sync). To avoid OperationalError
+    # when selecting Posts, provide a temporary in-memory property exposing the
+    # same attribute name used by the rest of the code. This keeps runtime
+    # behavior similar while avoiding DB column access. Revert once the DB is
+    # reconciled and the migration is applied.
+    @property
+    def repo_filename(self):
+        return getattr(self, '_repo_filename', None)
+
+    @repo_filename.setter
+    def repo_filename(self, value):
+        self._repo_filename = value if value is not None else None
 
     # Compat alias: exporter usa export_hash ma il campo DB si chiama exported_hash
     @property

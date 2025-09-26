@@ -367,8 +367,11 @@ def export_post(post):
         changed.append("last_export_path")
         # Persist repo_filename for future imports/export validation
         try:
-            post.repo_filename = rel_path
-            changed.append("repo_filename")
+            # Avoid persisting repo_filename in DB if the column is absent.
+            # Use an in-memory attribute so code depending on post.repo_filename
+            # continues to work until the schema is reconciled.
+            setattr(post, '_repo_filename', rel_path)
+            # Do not append to changed so we skip including repo_filename in update()
         except Exception:
             pass
         # commit HEAD

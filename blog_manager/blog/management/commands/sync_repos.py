@@ -313,7 +313,12 @@ class Command(BaseCommand):
                             if db_hash != h:
                                 site_report["updated"].append({"path": rel_path, "hash": h, "post_id": existing.pk})
                                 if apply_changes:
-                                    Post.objects.filter(pk=existing.pk).update(content=body, exported_hash=h, last_exported_at=timezone.now(), repo_path=rel_path, repo_filename=(full_path or os.path.join(posts_dir or '', rel_path)))
+                                    # Avoid updating repo_filename column if missing in prod DB; set in-memory attr instead
+                                    try:
+                                        Post.objects.filter(pk=existing.pk).update(content=body, exported_hash=h, last_exported_at=timezone.now(), repo_path=rel_path)
+                                        # Also set instance-level attr where possible (non-persistent)
+                                    except Exception:
+                                        logger.exception("Failed to update post %s without repo_filename", existing.pk)
                             else:
                                 site_report["unchanged"].append({"path": rel_path, "hash": h, "post_id": existing.pk})
                             continue
@@ -323,7 +328,12 @@ class Command(BaseCommand):
                         self.stdout.write(self.style.SUCCESS(f"  Created planned: {rel_path}"))
                         if apply_changes:
                             from blog.models import Author
-                            p = Post(site=site, title=title, slug=slug, content=content or body, exported_hash=h, repo_path=rel_path, repo_filename=(full_path or os.path.join(posts_dir or '', rel_path)))
+                            p = Post(site=site, title=title, slug=slug, content=content or body, exported_hash=h, repo_path=rel_path)
+                            # store repo_filename in-memory until DB schema reconciled
+                            try:
+                                setattr(p, '_repo_filename', (full_path or os.path.join(posts_dir or '', rel_path)))
+                            except Exception:
+                                pass
                             assigned = False
                             if author_name:
                                 a = Author.objects.filter(name=author_name).first() or Author.objects.filter(slug=author_name).first()
@@ -395,15 +405,18 @@ class Command(BaseCommand):
                             if apply_changes:
                                 try:
                                     # Update content with full original content (including front-matter)
-                                        Post.objects.filter(pk=post.pk).update(
-                                        content=content or (body or ""),
-                                        exported_hash=h,
-                                        last_exported_at=timezone.now(),
-                                        repo_path=rel_path,
-                                        repo_filename=rel_path,
-                                        last_commit_sha=commit_sha or post.last_commit_sha,
-                                        last_export_path=full_path or post.last_export_path,
-                                    )
+                                        try:
+                                            # Skip updating repo_filename column if absent; set core fields only
+                                            Post.objects.filter(pk=post.pk).update(
+                                                content=content or (body or ""),
+                                                exported_hash=h,
+                                                last_exported_at=timezone.now(),
+                                                repo_path=rel_path,
+                                                last_commit_sha=commit_sha or post.last_commit_sha,
+                                                last_export_path=full_path or post.last_export_path,
+                                            )
+                                        except Exception:
+                                            logger.exception("Failed to update post %s without repo_filename", post.pk)
                                 except Exception:
                                     logger.exception("Failed to update post %s with full metadata, falling back to minimal update", post.pk)
                                     # attempt a minimal update if the full one fails
@@ -430,7 +443,10 @@ class Command(BaseCommand):
                                 if apply_changes:
                                     # If post has no repo_path or differs from current rel_path, set it so mapping is recovered
                                     if (not post.repo_path) or (post.repo_path != rel_path):
-                                        Post.objects.filter(pk=post.pk).update(repo_path=rel_path, last_export_path=(full_path or post.last_export_path), last_commit_sha=(commit_sha or post.last_commit_sha))
+                                        try:
+                                            Post.objects.filter(pk=post.pk).update(repo_path=rel_path, last_export_path=(full_path or post.last_export_path), last_commit_sha=(commit_sha or post.last_commit_sha))
+                                        except Exception:
+                                            logger.exception("Failed to associate repo_path for post %s", post.pk)
                                         self.stdout.write(self.style.SUCCESS(f"  Associated repo path: {rel_path} -> post {post.pk}"))
                                         try:
                                             post.refresh_from_db()
