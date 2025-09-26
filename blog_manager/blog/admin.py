@@ -115,6 +115,12 @@ class SiteAdmin(admin.ModelAdmin):
         output = ""
         audits = []
         log_content = None
+        from django.conf import settings as _dj_settings
+
+        if getattr(_dj_settings, 'DISABLE_ADMIN_SYNC', False):
+            output = 'Background syncs disabled by configuration (DISABLE_ADMIN_SYNC=True).'
+            return render(request, 'admin/blog/site_run_sync.html', {'site': site, 'output': output, 'log_content': None})
+
         if request.method == 'POST':
             mode = request.POST.get('mode')
             # prepare a per-run log and tell sync_repos to write there so we can tail it

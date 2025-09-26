@@ -263,8 +263,22 @@ class Post(models.Model):
     title = models.CharField(max_length=200)
     # Deve restare max_length=200; avoid MySQL-specific collation on SQLite
     slug = models.SlugField(max_length=200)
-    # When True the slug must not be changed (set automatically when published)
-    slug_locked = models.BooleanField(default=False)
+    # NOTE (EMERGENCY SHIM): production schema may be missing the concrete
+    # `slug_locked` column (migrations out-of-sync). To avoid Immediate 500s
+    # caused by Django trying to SELECT that column, provide a temporary
+    # in-memory property that user code can read/write without hitting the DB.
+    # This is a short-lived compatibility shim — once the DB schema is
+    # reconciled, revert this to the real BooleanField declared in the
+    # migration file (00xx_add_slug_locked.py).
+    @property
+    def slug_locked(self):
+        return getattr(self, '_slug_locked', False)
+
+    @slug_locked.setter
+    def slug_locked(self, value):
+        # keep a non-persistent flag on the instance so callers that set
+        # slug_locked (e.g. during save()) still behave in-Python.
+        self._slug_locked = bool(value)
     author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True)
     categories = models.ManyToManyField(Category, related_name="posts", blank=True)
     content = models.TextField()  # Markdown o HTML
