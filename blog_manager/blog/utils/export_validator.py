@@ -28,12 +28,12 @@ def validate_repo_filenames(site_slug: str | None = None) -> List[Tuple[int, str
             bad.append((p.pk, p.slug, rf, "missing"))
             continue
         
-        # Jekyll standard format: _posts/.../YYYY-MM-DD-slug.md
-        # Support subdirectories within _posts but enforce correct date format
-        m = re.match(r"^_posts/(?:.+/)?(\d{4}-\d{2}-\d{2})-(.+)\.md$", rf)
+        # Jekyll standard format: _posts/.../YYYY-MM-DD-slug.md or _posts/.../YYYY-M-D-slug.md
+        # Support subdirectories within _posts and flexible date format (1 or 2 digits for month/day)
+        m = re.match(r"^_posts/(?:.+/)?(\d{4}-\d{1,2}-\d{1,2})-(.+)\.md$", rf)
         if not m:
             # Check if it's using incorrect DD-MM-YYYY format (should be flagged as invalid)
-            alt_format_check = re.match(r"^_posts/(?:.+/)?(\d{2}-\d{2}-\d{4})-(.+)\.md$", rf)
+            alt_format_check = re.match(r"^_posts/(?:.+/)?(\d{1,2}-\d{1,2}-\d{4})-(.+)\.md$", rf)
             if alt_format_check:
                 bad.append((p.pk, p.slug, rf, "invalid_date_format_use_YYYY-MM-DD"))
             else:
