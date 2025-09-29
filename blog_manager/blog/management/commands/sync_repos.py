@@ -148,12 +148,15 @@ class Command(BaseCommand):
         parser.add_argument("--delete-pks", help="Comma-separated Post PKs to delete (use with --confirm).", default=None)
         parser.add_argument("--delete-mode", choices=["db-only", "repo-and-db"], default="db-only", help="When deleting posts, also remove file from repo")
         parser.add_argument("--confirm", action="store_true", help="Confirm destructive operations (must be used with --delete-pks)")
+        parser.add_argument("--strict-audit", action="store_true", help="Abort sync on slug audit issues (default: warnings only)")
 
     def handle(self, *args, **options):
         slugs = options.get("sites")
         dry = options.get("dry_run")
         apply_changes = options.get("apply")
         report_path = options.get("report_path") or "reports"
+        strict_audit = options.get("strict_audit", False)
+        strict_audit = options.get("strict_audit", False)
 
         if apply_changes and dry:
             self.stdout.write(self.style.ERROR("Cannot use --apply together with --dry-run"))
@@ -389,15 +392,21 @@ class Command(BaseCommand):
                         'slug_source': slug_source,
                     })
 
-                # If applying changes, abort if audit found warnings for this site
-                if apply_changes and site_warnings:
-                    self.stdout.write(self.style.ERROR(f"Aborting apply for site {site.slug}: slug audit found {len(site_warnings)} issues."))
-                    for w in site_warnings:
-                        self.stdout.write(self.style.ERROR(f"  {w['path']}: slug={w['slug']} reasons={w['reasons']}"))
-                    # Skip applying for this site
-                    report['sites'][site.slug] = site_report
-                    # mark processed to avoid partial changes
-                    continue
+                # Handle audit warnings: abort if --strict-audit, otherwise just warn
+                if site_warnings:
+                    if strict_audit and apply_changes:
+                        self.stdout.write(self.style.ERROR(f"Aborting apply for site {site.slug}: slug audit found {len(site_warnings)} issues (--strict-audit enabled)."))
+                        for w in site_warnings:
+                            self.stdout.write(self.style.ERROR(f"  {w['path']}: slug={w['slug']} reasons={w['reasons']}"))
+                        # Skip applying for this site
+                        report['sites'][site.slug] = site_report
+                        continue
+                    else:
+                        self.stdout.write(self.style.WARNING(f"Slug audit found {len(site_warnings)} issues for site {site.slug} (continuing with sync):"))
+                        for w in site_warnings:
+                            self.stdout.write(self.style.WARNING(f"  {w['path']}: slug={w['slug']} reasons={w['reasons']}"))
+                        # Store warnings in report for later review but don't abort
+                        site_report['audit_warnings'] = site_warnings
 
                 # Second pass: perform the same operations as before but using prepared plan_items
                 for item in plan_items:
