@@ -279,12 +279,13 @@ def export_post(post):
         bad = validate_repo_filenames(site_slug=getattr(site, 'slug', None))
         if bad:
             # Filter only critical errors that should block export
-            critical_errors = [issue for issue in bad if not issue[3].startswith('slug_mismatch')]
+            # Exclude 'missing' and 'slug_mismatch' as non-critical (missing is normal for new posts)
+            critical_errors = [issue for issue in bad if not (issue[3].startswith('slug_mismatch') or issue[3] == 'missing')]
             if critical_errors:
                 logger.error("[export][validator] Pre-export validation failed for site %s; aborting export. First issue: %s", getattr(site, 'slug', None), critical_errors[0])
                 return
             else:
-                # Only slug_mismatch warnings - log but don't block
+                # Only slug_mismatch and missing warnings - log but don't block
                 logger.warning("[export][validator] Non-critical validation warnings for site %s: %s", getattr(site, 'slug', None), [issue[3] for issue in bad[:3]])
     except Exception:
         logger.exception("[export][validator] Validator crashed; aborting export for post id=%s", getattr(post, 'id', None))
