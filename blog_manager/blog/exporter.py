@@ -39,6 +39,8 @@ def _select_date(post):
 
 
 def _front_matter(post, site):
+    import yaml
+    
     data = {
         "layout": "post",
         "title": getattr(post, "title", "") or "",
@@ -50,18 +52,11 @@ def _front_matter(post, site):
     # description is derived from post.content/description field if present
     "description": getattr(post, "description", "") or "",
     }
-    lines = ["---"]
-    for k in sorted(data.keys()):
-        v = data[k]
-        if isinstance(v, list):
-            lines.append(f"{k}:")
-            for item in v:
-                lines.append(f"  - {item}")
-        else:
-            sv = str(v).replace(":", "\\:")
-            lines.append(f"{k}: {sv}")
-    lines.append("---")
-    return "\n".join(lines) + "\n"
+    
+    # Use proper YAML serialization instead of manual string building
+    yaml_content = yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=True)
+    
+    return f"---\n{yaml_content}---\n"
 
 
 def render_markdown(post, site):
@@ -234,8 +229,14 @@ def export_post(post):
     try:
         bad = validate_repo_filenames(site_slug=getattr(site, 'slug', None))
         if bad:
-            logger.error("[export][validator] Pre-export validation failed for site %s; aborting export. First issue: %s", getattr(site, 'slug', None), bad[0])
-            return
+            # Filter only critical errors that should block export
+            critical_errors = [issue for issue in bad if not issue[3].startswith('slug_mismatch')]
+            if critical_errors:
+                logger.error("[export][validator] Pre-export validation failed for site %s; aborting export. First issue: %s", getattr(site, 'slug', None), critical_errors[0])
+                return
+            else:
+                # Only slug_mismatch warnings - log but don't block
+                logger.warning("[export][validator] Non-critical validation warnings for site %s: %s", getattr(site, 'slug', None), [issue[3] for issue in bad[:3]])
     except Exception:
         logger.exception("[export][validator] Validator crashed; aborting export for post id=%s", getattr(post, 'id', None))
         return
