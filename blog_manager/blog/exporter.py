@@ -71,9 +71,58 @@ def build_post_relpath(post, site):
     date = _select_date(post)
     slug = getattr(post, "slug", None) or slugify_title(getattr(post, "title", ""))
     posts_dir = (getattr(site, "posts_dir", None) or "_posts").strip("/")
-    # normalize and ensure no leading slashes
     filename = f"{date.strftime('%Y-%m-%d')}-{slug}.md"
-    return os.path.normpath(f"{posts_dir}/{filename}")
+    
+    # Build hierarchical path based on categories and subcluster
+    path_parts = [posts_dir]
+    
+    # Get categories from post.categories (M2M relation)
+    categories = []
+    if hasattr(post, 'categories') and hasattr(post.categories, 'all'):
+        categories = [c.slug for c in post.categories.all()]
+    
+    # Extract subcluster from front-matter if present
+    subcluster = _extract_subcluster_from_post(post)
+    
+    # Build path: _posts/[cluster]/[subcluster]/filename
+    if categories:
+        # Use first category as main cluster
+        cluster = categories[0]
+        path_parts.append(cluster)
+        
+        if subcluster:
+            path_parts.append(subcluster)
+    
+    path_parts.append(filename)
+    return os.path.normpath("/".join(path_parts))
+
+
+def _extract_subcluster_from_post(post):
+    """Extract subcluster from post front-matter or content."""
+    import re
+    import yaml
+    
+    content = getattr(post, "content", "") or getattr(post, "body", "") or ""
+    
+    # Look for front-matter at the beginning of content
+    fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', content, re.DOTALL)
+    if not fm_match:
+        return None
+    
+    try:
+        fm_data = yaml.safe_load(fm_match.group(1))
+        if isinstance(fm_data, dict):
+            subcluster = fm_data.get('subcluster')
+            if subcluster:
+                # Handle both string and list formats
+                if isinstance(subcluster, list) and subcluster:
+                    return subcluster[0]
+                elif isinstance(subcluster, str):
+                    return subcluster
+    except Exception:
+        pass
+    
+    return None
 
 
 def compute_canonical_url(post, site):
