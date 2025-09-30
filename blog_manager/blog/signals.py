@@ -40,7 +40,8 @@ def _extract_values_from_fm(fm_text):
 @receiver(post_save, sender=Post)
 def ensure_categories_from_post(sender, instance, created, **kwargs):
     """Ensure Category rows exist for clusters and cluster/subcluster pairs found in a Post's front-matter.
-
+    
+    Also associates categories from front-matter to post.categories M2M relation for hierarchical export.
     This runs on every Post save. It's idempotent and uses get_or_create.
     """
     raw = instance.content or getattr(instance, 'body', '') or ''
@@ -70,6 +71,9 @@ def ensure_categories_from_post(sender, instance, created, **kwargs):
         subs = ['(no-subcluster)']
 
     site_id = getattr(instance.site, 'id', instance.site_id)
+    
+    # Track created/found categories to associate with post
+    categories_to_associate = []
 
     for c in cats:
         name_c = c
@@ -90,13 +94,15 @@ def ensure_categories_from_post(sender, instance, created, **kwargs):
             i += 1
 
         try:
-            Category.objects.get_or_create(site_id=site_id, slug=candidate, defaults={'name': name_c})
+            cat_obj, cat_created = Category.objects.get_or_create(site_id=site_id, slug=candidate, defaults={'name': name_c})
+            categories_to_associate.append(cat_obj)
         except DataError:
             # As a last-resort, create a much shorter slug with uuid suffix
             safe = (base_slug[: max_len - 9].rstrip('-') or 'cat') + '-' + uuid.uuid4().hex[:8]
             safe = safe[:max_len]
             try:
-                Category.objects.get_or_create(site_id=site_id, slug=safe, defaults={'name': name_c})
+                cat_obj, cat_created = Category.objects.get_or_create(site_id=site_id, slug=safe, defaults={'name': name_c})
+                categories_to_associate.append(cat_obj)
             except Exception:
                 # Give up silently — this is best-effort during massive imports
                 pass
@@ -119,14 +125,33 @@ def ensure_categories_from_post(sender, instance, created, **kwargs):
                 j += 1
 
             try:
-                Category.objects.get_or_create(site_id=site_id, slug=cand, defaults={'name': name})
+                cat_obj, cat_created = Category.objects.get_or_create(site_id=site_id, slug=cand, defaults={'name': name})
+                categories_to_associate.append(cat_obj)
             except DataError:
                 safe2 = (base[: max_len - 9].rstrip('-') or 'cat') + '-' + uuid.uuid4().hex[:8]
                 safe2 = safe2[:max_len]
                 try:
-                    Category.objects.get_or_create(site_id=site_id, slug=safe2, defaults={'name': name})
+                    cat_obj, cat_created = Category.objects.get_or_create(site_id=site_id, slug=safe2, defaults={'name': name})
+                    categories_to_associate.append(cat_obj)
                 except Exception:
                     pass
+    
+    # Associate categories with post through M2M relation for hierarchical export
+    # This ensures posts created via frontend or sync get proper category associations
+    if categories_to_associate:
+        try:
+            # Get current categories to avoid unnecessary database hits
+            current_category_ids = set(instance.categories.values_list('id', flat=True))
+            new_category_ids = set(cat.id for cat in categories_to_associate)
+            
+            # Only add categories that aren't already associated
+            categories_to_add = [cat for cat in categories_to_associate if cat.id not in current_category_ids]
+            
+            if categories_to_add:
+                instance.categories.add(*categories_to_add)
+        except Exception:
+            # Best-effort: if M2M association fails, don't break the save process
+            pass
 from contextvars import ContextVar
 from contextlib import suppress
 import logging
