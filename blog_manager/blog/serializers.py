@@ -5,8 +5,9 @@ from .models import Post, Site, Author
 
 class PostWriteSerializer(serializers.ModelSerializer):
     body = serializers.CharField(source="content", write_only=True, required=False, allow_blank=True)
-    # When writing via API, we prefer the front-matter title/slug; prevent clients from overriding
-    title = serializers.CharField(read_only=True)
+    # Allow clients to provide a top-level title when they prefer (legacy forms)
+    # If absent, we still try to extract it from front-matter in `content`.
+    title = serializers.CharField(required=False, allow_blank=True)
     slug = serializers.CharField(read_only=True)
 
     class Meta:
@@ -18,6 +19,12 @@ class PostWriteSerializer(serializers.ModelSerializer):
         validators = []
 
     def to_internal_value(self, data):
+        # Accept either `body` or `content` from clients. Our write field is
+        # `body` (source='content') but some clients send `content` directly.
+        if isinstance(data, dict) and "content" in data and "body" not in data:
+            # copy content into body so DRF field mapping treats it correctly
+            data = dict(data)
+            data["body"] = data.get("content")
         return super().to_internal_value(data)
 
     def validate(self, attrs):
