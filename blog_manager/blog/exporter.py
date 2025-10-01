@@ -68,6 +68,20 @@ def _strip_trivial_leading_frontmatter(body: str) -> str:
     return body
 
 
+def _strip_leading_frontmatter(body: str) -> str:
+    """Always strip a leading front-matter block from the body if present.
+
+    We will merge any meaningful front-matter found in the body into the
+    exported front-matter instead of leaving two separate blocks.
+    """
+    if not body:
+        return body
+    m = FRONTMATTER_RE.match(body)
+    if not m:
+        return body
+    return body[m.end():]
+
+
 def _select_date(post):
     for attr in ("published_at", "updated_at", "created_at"):
         val = getattr(post, attr, None)
@@ -84,6 +98,7 @@ def _front_matter(post, site):
 
     data = {
         "layout": "post",
+        # base title: prefer front-matter in body, fallback to DB title
         "title": fm_body.get("title") or getattr(post, "title", "") or "",
         # omit slug from exported front-matter: filename controls the slug
         "date": _select_date(post).strftime("%Y-%m-%d %H:%M:%S"),
@@ -94,6 +109,27 @@ def _front_matter(post, site):
         "description": getattr(post, "description", "") or "",
     }
 
+    # Merge any extra keys from the body's front-matter into the exported
+    # front-matter so we produce a single authoritative YAML block. We keep
+    # server-controlled fields (date, categories) authoritative by setting
+    # them after the merge.
+    if isinstance(fm_body, dict):
+        # start from fm_body to preserve arbitrary custom keys the author may have set
+        merged = dict(fm_body)
+        # ensure we don't export slug (filename controls slug)
+        merged.pop("slug", None)
+        # ensure title is present (prefer fm_body.title already)
+        if "title" not in merged or not merged.get("title"):
+            merged["title"] = data["title"]
+        # now overlay server-derived authoritative fields
+        merged["layout"] = data["layout"]
+        merged["date"] = data["date"]
+        merged["categories"] = data["categories"]
+        merged["tags"] = data["tags"]
+        merged["canonical"] = data["canonical"]
+        merged["description"] = data["description"]
+        data = merged
+
     # Use proper YAML serialization instead of manual string building
     yaml_content = yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
@@ -103,9 +139,9 @@ def _front_matter(post, site):
 def render_markdown(post, site):
     # Build front-matter (prefers title in body front-matter)
     fm = _front_matter(post, site)
-    # Strip trivial leading front-matter from body to avoid duplicates like '---\ntitle:...---'
+    # Strip any leading front-matter from body because we've merged it above.
     body = getattr(post, "content", "") or getattr(post, "body", "") or ""
-    body = _strip_trivial_leading_frontmatter(body)
+    body = _strip_leading_frontmatter(body)
     if not body.endswith("\n"):
         body = body + "\n"
     return fm + "\n" + body
