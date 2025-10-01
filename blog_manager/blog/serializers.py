@@ -24,6 +24,23 @@ class PostWriteSerializer(serializers.ModelSerializer):
         slug = attrs.get("slug")
         if isinstance(slug, str) and not slug.strip():
             attrs["slug"] = None
+
+        # If title not provided via API, try to extract it from YAML front-matter in content
+        content = attrs.get("content") or ""
+        if not attrs.get("title") and content:
+            try:
+                import re
+                import yaml
+
+                m = re.match(r"^\s*---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
+                if m:
+                    fm = yaml.safe_load(m.group(1)) or {}
+                    fm_title = fm.get("title") or fm.get("Title")
+                    if isinstance(fm_title, str) and fm_title.strip():
+                        attrs["title"] = fm_title.strip()
+            except Exception:
+                # best-effort extraction; ignore failures and proceed
+                pass
         return attrs
 
         def to_internal_value(self, data):
