@@ -304,6 +304,18 @@ class PostViewSet(ModelViewSet):
         from .serializers import PostSerializer
         return PostSerializer
 
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except Exception as exc:  # pragma: no cover - defensive
+            # If this is a DRF API exception (e.g. ValidationError), re-raise so
+            # DRF can render the appropriate 4xx response.
+            from rest_framework.exceptions import APIException as DRFAPIException
+            if isinstance(exc, DRFAPIException):
+                raise
+            logger.exception('Unhandled exception during PostViewSet.create')
+            return response.Response({'detail': 'Internal server error', 'error': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     def _unique_slug_for_site(self, *, site_id: int, base_slug: str) -> str:
         slug = base_slug
         i = 2
@@ -394,16 +406,23 @@ class PostViewSet(ModelViewSet):
         return [IsPublisherForWriteOrReadOnly()]
 
     def partial_update(self, request, *args, **kwargs):
-        post = self.get_object()
-        self.check_object_permissions(request, post)
-        serializer = self.get_serializer(post, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
+        try:
+            post = self.get_object()
+            self.check_object_permissions(request, post)
+            serializer = self.get_serializer(post, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
 
-
-        # Export handled automatically by post_save signal in blog.signals
-        # Return the updated post data
-        return response.Response(serializer.data, status=status.HTTP_200_OK)
+            # Export handled automatically by post_save signal in blog.signals
+            # Return the updated post data
+            return response.Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as exc:  # pragma: no cover - defensive
+            from rest_framework.exceptions import APIException as DRFAPIException
+            if isinstance(exc, DRFAPIException):
+                raise
+            logger.exception('Unhandled exception during partial_update for post id=%s', kwargs.get('pk'))
+            # Prefer structured JSON error for client parsing
+            return response.Response({'detail': 'Internal server error', 'error': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 from django.views import View
 from django.http import JsonResponse
