@@ -337,22 +337,23 @@ class PostViewSet(ModelViewSet):
 
     def perform_update(self, serializer):
         prev = self.get_object()
-        # Se l'update cambia slug/title, applica stessa logica di creazione
+        # Only adjust slug if client explicitly provided a slug in the payload.
         data = serializer.validated_data
-        site_obj_or_id = data.get("site", prev.site_id)
-        site_id = getattr(site_obj_or_id, "id", site_obj_or_id)
-        title = data.get("title", prev.title)
-        desired_slug = data.get("slug", prev.slug) or slugify(title)
-        auto_slug = (desired_slug == slugify(title))
+        if "slug" in data:
+            site_obj_or_id = data.get("site", prev.site_id)
+            site_id = getattr(site_obj_or_id, "id", site_obj_or_id)
+            title = data.get("title", prev.title)
+            desired_slug = data.get("slug") or slugify(title)
+            auto_slug = (desired_slug == slugify(title))
 
-        from .models import Post
-        conflict = Post.objects.filter(site_id=site_id, slug=desired_slug).exclude(pk=prev.pk).exists()
-        if conflict:
-            if auto_slug:
-                desired_slug = self._unique_slug_for_site(site_id=site_id, base_slug=desired_slug)
-            else:
-                raise Conflict()
-        serializer.validated_data["slug"] = desired_slug
+            from .models import Post
+            conflict = Post.objects.filter(site_id=site_id, slug=desired_slug).exclude(pk=prev.pk).exists()
+            if conflict:
+                if auto_slug:
+                    desired_slug = self._unique_slug_for_site(site_id=site_id, base_slug=desired_slug)
+                else:
+                    raise Conflict()
+            serializer.validated_data["slug"] = desired_slug
 
         obj = serializer.save()
         if obj.status == "published" and not obj.published_at:

@@ -83,7 +83,17 @@ class PostWriteSerializer(serializers.ModelSerializer):
             validated_data["slug"] = self._unique_slug_for_site(site, base_slug or "")
         else:
             validated_data["slug"] = base_slug or "post"
-        return super().create(validated_data)
+        try:
+            return super().create(validated_data)
+        except Exception as e:
+            # Convert Django model ValidationError into DRF ValidationError
+            from django.core.exceptions import ValidationError as DjangoValidationError
+            from rest_framework import serializers as drf_serializers
+            if isinstance(e, DjangoValidationError):
+                # e.message_dict or e.messages
+                payload = getattr(e, 'message_dict', None) or getattr(e, 'messages', None) or str(e)
+                raise drf_serializers.ValidationError(payload)
+            raise
 
     @transaction.atomic
     def update(self, instance, validated_data):
@@ -95,7 +105,15 @@ class PostWriteSerializer(serializers.ModelSerializer):
                 validated_data["slug"] = self._unique_slug_for_site(site, base_slug)
             else:
                 validated_data["slug"] = base_slug or instance.slug
-        return super().update(instance, validated_data)
+        try:
+            return super().update(instance, validated_data)
+        except Exception as e:
+            from django.core.exceptions import ValidationError as DjangoValidationError
+            from rest_framework import serializers as drf_serializers
+            if isinstance(e, DjangoValidationError):
+                payload = getattr(e, 'message_dict', None) or getattr(e, 'messages', None) or str(e)
+                raise drf_serializers.ValidationError(payload)
+            raise
 from .models import Category, Comment, Post, PostImage, Tag
 
 
