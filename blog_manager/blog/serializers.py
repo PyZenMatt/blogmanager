@@ -5,6 +5,9 @@ from .models import Post, Site, Author
 
 class PostWriteSerializer(serializers.ModelSerializer):
     body = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    # When writing via API, we prefer the front-matter title/slug; prevent clients from overriding
+    title = serializers.CharField(read_only=True)
+    slug = serializers.CharField(read_only=True)
 
     class Meta:
         model = Post

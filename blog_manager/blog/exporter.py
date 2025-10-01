@@ -30,6 +30,44 @@ def slugify_title(value: str) -> str:
     return value.strip("-")
 
 
+# regex to detect YAML front-matter at start of body
+FRONTMATTER_RE = re.compile(r"^\s*---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+
+def _extract_frontmatter_from_body(body: str) -> dict:
+    """Return parsed front-matter dict if present at start of body, else {}."""
+    import yaml
+    if not body:
+        return {}
+    m = FRONTMATTER_RE.match(body)
+    if not m:
+        return {}
+    try:
+        return yaml.safe_load(m.group(1)) or {}
+    except Exception:
+        return {}
+
+
+def _strip_trivial_leading_frontmatter(body: str) -> str:
+    """Strip leading front-matter if it's trivial (only title/slug) to avoid duplicated small FM blocks.
+
+    If front-matter contains only keys in {'title', 'slug'} it will be removed. Otherwise body is returned unchanged.
+    """
+    if not body:
+        return body
+    m = FRONTMATTER_RE.match(body)
+    if not m:
+        return body
+    try:
+        import yaml
+        data = yaml.safe_load(m.group(1)) or {}
+    except Exception:
+        return body
+    if isinstance(data, dict) and set(data.keys()) <= {"title", "slug"}:
+        return body[m.end():]
+    return body
+
+
 def _select_date(post):
     for attr in ("published_at", "updated_at", "created_at"):
         val = getattr(post, attr, None)
@@ -40,28 +78,34 @@ def _select_date(post):
 
 def _front_matter(post, site):
     import yaml
-    
+    # prefer title from front-matter if present in the body
+    body = getattr(post, "content", "") or getattr(post, "body", "") or ""
+    fm_body = _extract_frontmatter_from_body(body)
+
     data = {
         "layout": "post",
-        "title": getattr(post, "title", "") or "",
-        "slug": getattr(post, "slug", "") or "",
+        "title": fm_body.get("title") or getattr(post, "title", "") or "",
+        # omit slug from exported front-matter: filename controls the slug
         "date": _select_date(post).strftime("%Y-%m-%d %H:%M:%S"),
         "categories": sorted([c.slug for c in getattr(post, 'categories', []).all()]) if hasattr(getattr(post, 'categories', None), 'all') else [],
         "tags": [],
         "canonical": getattr(post, "canonical_url", "") or "",
-    # description is derived from post.content/description field if present
-    "description": getattr(post, "description", "") or "",
+        # description is derived from post.content/description field if present
+        "description": getattr(post, "description", "") or "",
     }
-    
+
     # Use proper YAML serialization instead of manual string building
-    yaml_content = yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=True)
-    
+    yaml_content = yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
     return f"---\n{yaml_content}---\n"
 
 
 def render_markdown(post, site):
+    # Build front-matter (prefers title in body front-matter)
     fm = _front_matter(post, site)
+    # Strip trivial leading front-matter from body to avoid duplicates like '---\ntitle:...---'
     body = getattr(post, "content", "") or getattr(post, "body", "") or ""
+    body = _strip_trivial_leading_frontmatter(body)
     if not body.endswith("\n"):
         body = body + "\n"
     return fm + "\n" + body
