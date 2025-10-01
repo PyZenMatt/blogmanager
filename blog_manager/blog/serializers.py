@@ -4,23 +4,25 @@ from rest_framework import serializers
 from .models import Post, Site, Author
 
 class PostWriteSerializer(serializers.ModelSerializer):
-    body = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    body = serializers.CharField(source="content", write_only=True, required=False, allow_blank=True)
     # When writing via API, we prefer the front-matter title/slug; prevent clients from overriding
     title = serializers.CharField(read_only=True)
     slug = serializers.CharField(read_only=True)
 
     class Meta:
         model = Post
-        fields = "__all__"
+        # Use a write alias `body` (source='content') so exclude the model's
+        # `content` field from automatic generation to avoid duplicate/required
+        # field conflicts.
+        exclude = ("content",)
         validators = []
 
     def to_internal_value(self, data):
         return super().to_internal_value(data)
 
     def validate(self, attrs):
-        body = attrs.pop("body", None)
-        if body is not None and not attrs.get("content"):
-            attrs["content"] = body
+        # `body` is mapped to `content` via field `source` so `content` will be
+        # present in attrs if the client supplied `body`.
         slug = attrs.get("slug")
         if isinstance(slug, str) and not slug.strip():
             attrs["slug"] = None
@@ -43,55 +45,57 @@ class PostWriteSerializer(serializers.ModelSerializer):
                 pass
         return attrs
 
-        def to_internal_value(self, data):
-            return super().to_internal_value(data)
+    def _unique_slug_for_site(self, site, base_slug: str) -> str:
+        slug = base_slug or ""
+        if not slug:
+            slug = "post"
+        candidate = slug
+        idx = 2
+        from .models import Post
+        while Post.objects.filter(site=site, slug=candidate).exists():
+            candidate = f"{slug}-{idx}"
+            idx += 1
+        return candidate
 
-        def validate(self, attrs):
-            body = attrs.pop("body", None)
-            if body is not None and not attrs.get("content"):
-                attrs["content"] = body
-            slug = attrs.get("slug")
-            if isinstance(slug, str) and not slug.strip():
-                attrs["slug"] = None
-            return attrs
+    def slugify(self, text: str) -> str:
+        # Normalise and slugify text like other parts of the app
+        import re
+        import unicodedata
+        from django.utils.text import slugify as dj_slugify
 
-        def _unique_slug_for_site(self, site, base_slug: str) -> str:
-            slug = base_slug or ""
-            if not slug:
-                slug = "post"
-            candidate = slug
-            idx = 2
-            from .models import Post
-            while Post.objects.filter(site=site, slug=candidate).exists():
-                candidate = f"{slug}-{idx}"
-                idx += 1
-            return candidate
+        v = text or ""
+        v = re.sub(r"[\x00\uD800-\uDFFF]", "", v)
+        try:
+            v = unicodedata.normalize("NFKD", v)
+        except Exception:
+            pass
+        return dj_slugify(v)[:200].strip("-") or "post"
 
-        from django.db import transaction
+    from django.db import transaction
 
-        @transaction.atomic
-        def create(self, validated_data):
-            title = validated_data.get("title") or ""
-            site = validated_data.get("site")
-            provided_slug = validated_data.get("slug")
-            base_slug = self.slugify(provided_slug or title) if (provided_slug or title) else None
+    @transaction.atomic
+    def create(self, validated_data):
+        title = validated_data.get("title") or ""
+        site = validated_data.get("site")
+        provided_slug = validated_data.get("slug")
+        base_slug = self.slugify(provided_slug or title) if (provided_slug or title) else None
+        if site:
+            validated_data["slug"] = self._unique_slug_for_site(site, base_slug or "")
+        else:
+            validated_data["slug"] = base_slug or "post"
+        return super().create(validated_data)
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        site = validated_data.get("site", getattr(instance, "site", None))
+        new_slug = validated_data.get("slug", None)
+        if new_slug is not None:
+            base_slug = self.slugify(new_slug) if new_slug else self.slugify(validated_data.get("title") or instance.title or "")
             if site:
-                validated_data["slug"] = self._unique_slug_for_site(site, base_slug or "")
+                validated_data["slug"] = self._unique_slug_for_site(site, base_slug)
             else:
-                validated_data["slug"] = base_slug or "post"
-            return super().create(validated_data)
-
-        @transaction.atomic
-        def update(self, instance, validated_data):
-            site = validated_data.get("site", getattr(instance, "site", None))
-            new_slug = validated_data.get("slug", None)
-            if new_slug is not None:
-                base_slug = self.slugify(new_slug) if new_slug else self.slugify(validated_data.get("title") or instance.title or "")
-                if site:
-                    validated_data["slug"] = self._unique_slug_for_site(site, base_slug)
-                else:
-                    validated_data["slug"] = base_slug or instance.slug
-            return super().update(instance, validated_data)
+                validated_data["slug"] = base_slug or instance.slug
+        return super().update(instance, validated_data)
 from .models import Category, Comment, Post, PostImage, Tag
 
 
