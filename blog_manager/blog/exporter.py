@@ -96,10 +96,13 @@ def _front_matter(post, site):
     body = getattr(post, "content", "") or getattr(post, "body", "") or ""
     fm_body = _extract_frontmatter_from_body(body)
 
+    # Start with server-controlled baseline. Intentionally do NOT include the
+    # DB `post.title` here: we will export the title only when the author
+    # explicitly provided it in the post body front-matter. This avoids
+    # injecting the DB title into files created/updated on the repo side.
     data = {
         "layout": "post",
-        # base title: prefer front-matter in body, fallback to DB title
-        "title": fm_body.get("title") or getattr(post, "title", "") or "",
+        # omit title unless present in body front-matter
         # omit slug from exported front-matter: filename controls the slug
         "date": _select_date(post).strftime("%Y-%m-%d %H:%M:%S"),
         "categories": sorted([c.slug for c in getattr(post, 'categories', []).all()]) if hasattr(getattr(post, 'categories', None), 'all') else [],
@@ -118,9 +121,10 @@ def _front_matter(post, site):
         merged = dict(fm_body)
         # ensure we don't export slug (filename controls slug)
         merged.pop("slug", None)
-        # ensure title is present (prefer fm_body.title already)
-        if "title" not in merged or not merged.get("title"):
-            merged["title"] = data["title"]
+        # do NOT inject DB title: only keep title if author provided it in fm_body
+        if "title" in merged and not merged.get("title"):
+            # empty/falsey title provided in front-matter -> remove it
+            merged.pop("title", None)
         # now overlay server-derived authoritative fields
         merged["layout"] = data["layout"]
         merged["date"] = data["date"]
