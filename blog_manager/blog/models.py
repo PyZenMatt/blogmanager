@@ -221,19 +221,41 @@ class Site(models.Model):
 class Category(models.Model):
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="categories")
     name = models.CharField(max_length=100)
-    slug = models.SlugField()
+    slug = models.SlugField()  # Keep for backwards compatibility
+    # New normalized fields added in migration 0035
+    cluster_slug = models.SlugField(help_text="Normalized cluster identifier (e.g., django, frontend)")
+    subcluster_slug = models.SlugField(blank=True, null=True, help_text="Optional subcluster identifier (e.g., forms, authentication)")
     meta_title = models.CharField(max_length=70, blank=True)
     meta_description = models.CharField(max_length=180, blank=True)
 
     def __str__(self):
+        if hasattr(self, 'subcluster_slug') and self.subcluster_slug:
+            return f"{self.cluster_slug}/{self.subcluster_slug} ({self.site})"
+        elif hasattr(self, 'cluster_slug') and self.cluster_slug:
+            return f"{self.cluster_slug} ({self.site})"
         return f"{self.name} ({self.site})"
 
+    @property
+    def full_path(self):
+        """Return the full category path (cluster/subcluster or just cluster)"""
+        if hasattr(self, 'subcluster_slug') and self.subcluster_slug:
+            return f"{self.cluster_slug}/{self.subcluster_slug}"
+        elif hasattr(self, 'cluster_slug') and self.cluster_slug:
+            return self.cluster_slug
+        return self.name
+
     class Meta:
-        unique_together = (("site", "slug"),)
-        indexes = [
-            models.Index(fields=["site", "slug"]),
+        constraints = [
+            models.UniqueConstraint(
+                fields=['site', 'cluster_slug', 'subcluster_slug'], 
+                name='unique_site_cluster_subcluster'
+            ),
         ]
-        ordering = ["id"]
+        indexes = [
+            models.Index(fields=["site", "slug"]),  # Keep for backwards compatibility
+            models.Index(fields=['site', 'cluster_slug', 'subcluster_slug'], name='idx_site_cluster_sub'),
+        ]
+        ordering = ["cluster_slug", "subcluster_slug"]
 
 
 class Author(models.Model):

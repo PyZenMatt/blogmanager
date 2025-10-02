@@ -41,8 +41,9 @@ def _extract_values_from_fm(fm_text):
 def ensure_categories_from_post(sender, instance, created, **kwargs):
     """Ensure Category rows exist for clusters and cluster/subcluster pairs found in a Post's front-matter.
     
-    Also associates categories from front-matter to post.categories M2M relation for hierarchical export.
-    This runs on every Post save. It's idempotent and uses get_or_create.
+    This uses the new normalized category structure to avoid duplicates.
+    Associates categories from front-matter to post.categories M2M relation for hierarchical export.
+    This runs on every Post save and is idempotent.
     """
     raw = instance.content or getattr(instance, 'body', '') or ''
     m = fm_re.search(raw)
@@ -50,6 +51,7 @@ def ensure_categories_from_post(sender, instance, created, **kwargs):
         return
     fm_text = m.group(1)
     cats, subs = _extract_values_from_fm(fm_text)
+    
     # Fallback: if no categories found, inspect instance.categories M2M (best-effort)
     if not cats:
         try:
@@ -66,78 +68,61 @@ def ensure_categories_from_post(sender, instance, created, **kwargs):
         return
 
     if not cats:
-        cats = ['(no-category)']
+        cats = ['uncategorized']
     if not subs:
-        subs = ['(no-subcluster)']
+        subs = [None]  # Use None instead of string for no subcluster
 
     site_id = getattr(instance.site, 'id', instance.site_id)
     
-    # Track created/found categories to associate with post
-    categories_to_associate = []
-
-    for c in cats:
-        name_c = c
-        # Build a DB-safe slug: slugify, truncate to model field max_length and make unique per site
-        try:
-            max_len = Category._meta.get_field('slug').max_length or 50
-        except Exception:
-            max_len = 50
-
-        base_slug = dj_slugify(name_c) or 'category'
-        base_slug = base_slug[:max_len].strip('-')
-        candidate = base_slug
-        i = 2
-        while Category.objects.filter(site_id=site_id, slug=candidate).exists():
-            suffix = f"-{i}"
-            cut = max_len - len(suffix)
-            candidate = f"{base_slug[:cut].rstrip('-')}{suffix}"
-            i += 1
-
-        try:
-            cat_obj, cat_created = Category.objects.get_or_create(site_id=site_id, slug=candidate, defaults={'name': name_c})
-            categories_to_associate.append(cat_obj)
-        except DataError:
-            # As a last-resort, create a much shorter slug with uuid suffix
-            safe = (base_slug[: max_len - 9].rstrip('-') or 'cat') + '-' + uuid.uuid4().hex[:8]
-            safe = safe[:max_len]
-            try:
-                cat_obj, cat_created = Category.objects.get_or_create(site_id=site_id, slug=safe, defaults={'name': name_c})
-                categories_to_associate.append(cat_obj)
-            except Exception:
-                # Give up silently — this is best-effort during massive imports
-                pass
-        for su in subs:
-            name = f"{name_c}/{su}" if su and su != '(no-subcluster)' else name_c
-            # same process for combined category/subcluster name
-            try:
-                max_len = Category._meta.get_field('slug').max_length or 50
-            except Exception:
-                max_len = 50
-
-            base = dj_slugify(name) or 'category'
-            base = base[:max_len].strip('-')
-            cand = base
-            j = 2
-            while Category.objects.filter(site_id=site_id, slug=cand).exists():
-                suffix = f"-{j}"
-                cut = max_len - len(suffix)
-                cand = f"{base[:cut].rstrip('-')}{suffix}"
-                j += 1
-
-            try:
-                cat_obj, cat_created = Category.objects.get_or_create(site_id=site_id, slug=cand, defaults={'name': name})
-                categories_to_associate.append(cat_obj)
-            except DataError:
-                safe2 = (base[: max_len - 9].rstrip('-') or 'cat') + '-' + uuid.uuid4().hex[:8]
-                safe2 = safe2[:max_len]
-                try:
-                    cat_obj, cat_created = Category.objects.get_or_create(site_id=site_id, slug=safe2, defaults={'name': name})
-                    categories_to_associate.append(cat_obj)
-                except Exception:
-                    pass
+    # Collect unique (cluster, subcluster) tuples to create categories
+    category_specs = set()
     
-    # Associate categories with post through M2M relation for hierarchical export
-    # This ensures posts created via frontend or sync get proper category associations
+    for c in cats:
+        cluster_name = c.strip()
+        cluster_slug = dj_slugify(cluster_name) or 'uncategorized'
+        
+        # Add the cluster itself as a category
+        category_specs.add((cluster_slug, cluster_name, None, None))
+        
+        # Add cluster/subcluster combinations
+        for s in subs:
+            if s and s.strip():
+                subcluster_name = s.strip()
+                subcluster_slug = dj_slugify(subcluster_name)
+                full_name = f"{cluster_name}/{subcluster_name}"
+                category_specs.add((cluster_slug, cluster_name, subcluster_slug, full_name))
+    
+    # Bulk create/get categories using the new normalized structure
+    categories_to_associate = []
+    
+    for cluster_slug, cluster_name, subcluster_slug, full_name in category_specs:
+        display_name = full_name if full_name else cluster_name
+        
+        # Create backwards-compatible slug for the slug field
+        if subcluster_slug:
+            compat_slug = f"{cluster_slug}-{subcluster_slug}"
+        else:
+            compat_slug = cluster_slug
+        
+        try:
+            cat_obj, cat_created = Category.objects.get_or_create(
+                site_id=site_id, 
+                cluster_slug=cluster_slug,
+                subcluster_slug=subcluster_slug,
+                defaults={
+                    'name': display_name,
+                    'slug': compat_slug,  # Keep for backwards compatibility
+                }
+            )
+            categories_to_associate.append(cat_obj)
+            
+        except Exception as e:
+            # Log the error but don't break the save process
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to create category {cluster_slug}/{subcluster_slug}: {e}")
+    
+    # Associate categories with post through M2M relation
     if categories_to_associate:
         try:
             # Get current categories to avoid unnecessary database hits

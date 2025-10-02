@@ -80,6 +80,7 @@ def extract_frontmatter(text: Optional[str]) -> Dict[str, Any]:
 def create_categories_from_frontmatter(post, fields: Optional[List[str]] = None, hierarchy: str = "slash") -> List:
 	# import locally to avoid circular import with models
 	from ..models import Category
+	from django.utils.text import slugify
 
 	if fields is None:
 		fields = ["categories", "cluster"]
@@ -155,7 +156,9 @@ def create_categories_from_frontmatter(post, fields: Optional[List[str]] = None,
 	if not cats:
 		return []
 
-	created_objs = []
+	# Use new normalized category structure - collect unique (cluster, subcluster) tuples
+	category_specs = set()
+	
 	for raw in cats:
 		if hierarchy == "slash":
 			parts = [p.strip() for p in re.split(r"\s*/\s*", raw) if p.strip()]
@@ -164,14 +167,61 @@ def create_categories_from_frontmatter(post, fields: Optional[List[str]] = None,
 		else:
 			parts = [raw.strip()]
 
-		accum = []
-		for i in range(len(parts)):
-			accum.append(parts[i])
-			name = "/".join(accum) if len(accum) > 1 else accum[0]
-			slug = slugify(name.replace("/", "-").replace(">", "-"))
-			defaults = {"name": name}
-			obj, created = Category.objects.get_or_create(site=post.site, slug=slug, defaults=defaults)
+		if not parts:
+			continue
+			
+		cluster_name = parts[0]
+		cluster_slug = slugify(cluster_name) or 'uncategorized'
+		
+		if len(parts) == 1:
+			# Just cluster, no subcluster - this is a standalone category
+			category_specs.add((cluster_slug, cluster_name, None, None))
+		elif len(parts) == 2:
+			# Cluster + subcluster - create both the cluster and the hierarchical category
+			subcluster_name = parts[1]
+			subcluster_slug = slugify(subcluster_name)
+			full_name = f"{cluster_name}/{subcluster_name}"
+			
+			# Add both the cluster itself and the cluster/subcluster combination
+			category_specs.add((cluster_slug, cluster_name, None, None))
+			category_specs.add((cluster_slug, cluster_name, subcluster_slug, full_name))
+		else:
+			# For deeper hierarchies, just take first two levels for now
+			subcluster_name = parts[1]
+			subcluster_slug = slugify(subcluster_name)
+			full_name = f"{cluster_name}/{subcluster_name}"
+			
+			category_specs.add((cluster_slug, cluster_name, None, None))
+			category_specs.add((cluster_slug, cluster_name, subcluster_slug, full_name))
+
+	# Bulk create categories using the new normalized structure
+	created_objs = []
+	
+	for cluster_slug, cluster_name, subcluster_slug, full_name in category_specs:
+		display_name = full_name if full_name else cluster_name
+		
+		# Create backwards-compatible slug for the slug field
+		if subcluster_slug:
+			compat_slug = f"{cluster_slug}-{subcluster_slug}"
+		else:
+			compat_slug = cluster_slug
+		
+		try:
+			obj, created = Category.objects.get_or_create(
+				site=post.site,
+				cluster_slug=cluster_slug,
+				subcluster_slug=subcluster_slug,
+				defaults={
+					'name': display_name,
+					'slug': compat_slug,  # Keep for backwards compatibility
+				}
+			)
 			created_objs.append(obj)
+		except Exception as e:
+			# Log the error but continue processing
+			import logging
+			logger = logging.getLogger(__name__)
+			logger.warning(f"Failed to create category {cluster_slug}/{subcluster_slug}: {e}")
 
 	# assign unique categories to post
 	if created_objs:
@@ -182,6 +232,11 @@ def create_categories_from_frontmatter(post, fields: Optional[List[str]] = None,
 				unique.append(o)
 				seen.add(o.pk)
 		if unique:
-			post.categories.add(*unique)
+			# Get current categories to avoid duplicates
+			current_category_ids = set(post.categories.values_list('id', flat=True))
+			categories_to_add = [cat for cat in unique if cat.id not in current_category_ids]
+			
+			if categories_to_add:
+				post.categories.add(*categories_to_add)  # Add new categories without removing existing ones
 
 	return created_objs
