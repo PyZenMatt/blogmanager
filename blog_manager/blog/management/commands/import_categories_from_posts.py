@@ -55,95 +55,113 @@ class Command(BaseCommand):
         auto_hashtags = options["auto_hashtags"]
         dry = options["dry_run"]
 
+        # We'll process site-by-site to make import idempotent and avoid duplicates.
         posts = Post.objects.select_related('site').all()
         total_created = 0
         total_assigned = 0
 
+        # Group posts per site for batch processing
+        posts_by_site = {}
         for post in posts:
-            site = post.site
-            fm = extract_frontmatter(post.content)
-            cats = []
+            posts_by_site.setdefault(post.site_id, []).append(post)
 
-            # Collect values from provided front-matter fields. If multiple fields are provided
-            # we combine them into a hierarchical name (e.g. 'cluster/subcluster').
-            if fm:
-                vals = []
-                for fld in fields:
-                    if fld in fm and fm[fld] is not None:
-                        v = fm[fld]
-                        # If the field is a sequence, join its items (choose first if multiple)
-                        if isinstance(v, (list, tuple)) and v:
-                            # flatten lists into string entries
-                            vals.extend([str(x).strip() for x in v if x])
+        for site_id, site_posts in posts_by_site.items():
+            # map slug -> desired display name (keep first encountered name)
+            desired = {}
+            # map post_id -> list of slugs to assign
+            assignments = {}
+
+            for post in site_posts:
+                fm = extract_frontmatter(post.content)
+                cats = []
+
+                if fm:
+                    vals = []
+                    for fld in fields:
+                        if fld in fm and fm[fld] is not None:
+                            v = fm[fld]
+                            if isinstance(v, (list, tuple)) and v:
+                                vals.extend([str(x).strip() for x in v if x])
+                            else:
+                                vals.append(str(v).strip())
+                    if vals:
+                        if len(vals) == 1:
+                            cats = [vals[0]]
                         else:
-                            vals.append(str(v).strip())
-                # If multiple front-matter fields were present, build a single hierarchical name
-                if vals:
-                    # If fields correspond to multiple categories (e.g., categories list), keep them separate
-                    if len(vals) == 1:
-                        cats = [vals[0]]
+                            cats = ["/".join(vals)]
+
+                if not cats:
+                    m = re.search(r'(?mi)^categories:\s*(.+)$', post.content or '')
+                    if m:
+                        cats = [s.strip() for s in re.split(r"[,;]\s*", m.group(1)) if s.strip()]
+
+                if not cats and auto_hashtags:
+                    tags = re.findall(r"#([A-Za-z0-9_\-/]+)", post.content or "")
+                    cats = [t.replace('-', ' ').replace('_', ' ').strip() for t in tags]
+
+                if not cats:
+                    continue
+
+                slugs_for_post = []
+                for raw in cats:
+                    if hierarchy == 'slash':
+                        parts = [p.strip() for p in re.split(r"\s*/\s*", raw) if p.strip()]
+                    elif hierarchy == '>':
+                        parts = [p.strip() for p in re.split(r"\s*>\s*", raw) if p.strip()]
                     else:
-                        # join with slash to indicate hierarchy
-                        cats = ["/".join(vals)]
+                        parts = [raw.strip()]
 
-            # fallback: if none found using provided fields, try legacy 'categories' line
-            if not cats:
-                # try 'categories:' line
-                m = re.search(r'(?mi)^categories:\s*(.+)$', post.content or '')
-                if m:
-                    cats = [s.strip() for s in re.split(r"[,;]\s*", m.group(1)) if s.strip()]
+                    accum = []
+                    for i in range(len(parts)):
+                        accum.append(parts[i])
+                        name = "/".join(accum) if len(accum) > 1 else accum[0]
+                        slug = slugify(name.replace('/', '-').replace('>', '-')).strip()
+                        if not slug:
+                            continue
+                        # record desired name for this slug (first-wins)
+                        desired.setdefault(slug, name)
+                        slugs_for_post.append(slug)
 
-            # hashtags fallback
-            if not cats and auto_hashtags:
-                tags = re.findall(r"#([A-Za-z0-9_\-/]+)", post.content or "")
-                cats = [t.replace('-', ' ').replace('_', ' ').strip() for t in tags]
+                if slugs_for_post:
+                    assignments.setdefault(post.pk, []).extend(slugs_for_post)
 
-            if not cats:
+            if not desired:
                 continue
 
-            created_objs = []
-            for raw in cats:
-                # raw might already contain hierarchy separators, normalize depending on requested hierarchy style
-                if hierarchy == 'slash':
-                    parts = [p.strip() for p in re.split(r"\s*/\s*", raw) if p.strip()]
-                elif hierarchy == '>':
-                    parts = [p.strip() for p in re.split(r"\s*>\s*", raw) if p.strip()]
-                else:
-                    parts = [raw.strip()]
+            # Prefetch existing categories for the site
+            existing = Category.objects.filter(site_id=site_id, slug__in=list(desired.keys()))
+            existing_map = {c.slug: c for c in existing}
 
-                # create cumulative categories (parent, parent/child, ...)
-                accum = []
-                for i in range(len(parts)):
-                    accum.append(parts[i])
-                    name = "/".join(accum) if len(accum) > 1 else accum[0]
-                    # slug: replace separators with hyphen
-                    slug = slugify(name.replace('/', '-').replace('>', '-'))
-                    defaults = {'name': name}
-                    if dry:
-                        obj = None
-                        created = False
-                        try:
-                            obj = Category.objects.filter(site=site, slug=slug).first()
-                        except Exception:
-                            obj = None
-                    else:
-                        obj, created = Category.objects.get_or_create(site=site, slug=slug, defaults=defaults)
-                    if created:
-                        total_created += 1
-                    if obj:
-                        created_objs.append(obj)
+            # Determine which slugs need to be created
+            to_create = []
+            for slug, name in desired.items():
+                if slug not in existing_map:
+                    to_create.append(Category(site_id=site_id, slug=slug, name=name))
 
-            # assign categories to post (add only new ones)
-            if not dry and created_objs:
-                # ensure unique
-                unique_objs = []
-                seen = set()
-                for o in created_objs:
-                    if o and o.pk and o.pk not in seen:
-                        unique_objs.append(o)
-                        seen.add(o.pk)
-                if unique_objs:
-                    post.categories.add(*unique_objs)
-                    total_assigned += len(unique_objs)
+            # Bulk create missing categories (ignore conflicts to be safe in concurrent runs)
+            if to_create and not dry:
+                Category.objects.bulk_create(to_create, ignore_conflicts=True)
+                total_created += len(to_create)
+
+            # Re-fetch all categories for mapping
+            all_cats = Category.objects.filter(site_id=site_id, slug__in=list(desired.keys()))
+            slug_to_obj = {c.slug: c for c in all_cats}
+
+            # Assign categories to posts in batch
+            if not dry and assignments:
+                # collect mapping post_id -> category objects
+                for post in site_posts:
+                    slugs = assignments.get(post.pk)
+                    if not slugs:
+                        continue
+                    objs = []
+                    for s in slugs:
+                        obj = slug_to_obj.get(s)
+                        if obj:
+                            objs.append(obj)
+                    if objs:
+                        # avoid duplicates by using add with unique ids
+                        post.categories.add(*objs)
+                        total_assigned += len(objs)
 
         self.stdout.write(self.style.SUCCESS(f"Categories created: {total_created}, assigned: {total_assigned}"))

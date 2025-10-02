@@ -111,8 +111,9 @@ def _front_matter(post, site):
     categories = []
     if hasattr(post, 'categories') and hasattr(post.categories, 'all'):
         categories = sorted([c.slug for c in post.categories.all()])
-    if categories:
-        data["categories"] = categories
+    # Always include categories key (empty list when none) to make exported
+    # front-matter explicit and consistent for downstream tooling.
+    data["categories"] = categories
 
     # Only include canonical URL if it's provided and non-empty
     canonical = getattr(post, "canonical_url", "") or ""
@@ -145,14 +146,18 @@ def _front_matter(post, site):
                 if not value or (isinstance(value, (list, tuple)) and len(value) == 0) or (isinstance(value, str) and not value.strip()):
                     merged.pop(key, None)
 
-        # now overlay server-derived authoritative fields (only non-empty ones)
+        # now overlay server-derived authoritative fields. Date and layout are
+        # always authoritative; categories are also authoritative when present.
+        # For other fields like canonical/description we treat server values as
+        # fallback only: if the user provided them in front-matter we keep user
+        # values (user wins).
         merged["layout"] = data["layout"]
         merged["date"] = data["date"]
         if "categories" in data:
             merged["categories"] = data["categories"]
-        if "canonical" in data:
+        if "canonical" not in merged and "canonical" in data:
             merged["canonical"] = data["canonical"]
-        if "description" in data:
+        if "description" not in merged and "description" in data:
             merged["description"] = data["description"]
         data = merged
 
