@@ -31,7 +31,7 @@ def slugify_title(value: str) -> str:
 
 
 # regex to detect YAML front-matter at start of body
-FRONTMATTER_RE = re.compile(r"^\s*---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+FRONTMATTER_RE = re.compile(r"^\s*---\s*\n(.*?)\n---\s*(?:\n|$)", re.DOTALL)
 
 
 def _extract_frontmatter_from_body(body: str) -> dict:
@@ -253,7 +253,8 @@ def _extract_subcluster_from_post(post):
     content = getattr(post, "content", "") or getattr(post, "body", "") or ""
     
     # Look for front-matter at the beginning of content
-    fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', content, re.DOTALL)
+    # reuse the module-level FRONTMATTER_RE which accepts closing '---' at EOF
+    fm_match = FRONTMATTER_RE.match(content)
     if not fm_match:
         return None
     
