@@ -105,12 +105,24 @@ def _front_matter(post, site):
         # omit title unless present in body front-matter
         # omit slug from exported front-matter: filename controls the slug
         "date": _select_date(post).strftime("%Y-%m-%d %H:%M:%S"),
-        "categories": sorted([c.slug for c in getattr(post, 'categories', []).all()]) if hasattr(getattr(post, 'categories', None), 'all') else [],
-        "tags": [],
-        "canonical": getattr(post, "canonical_url", "") or "",
-        # description is derived from post.content/description field if present
-        "description": getattr(post, "description", "") or "",
     }
+
+    # Only include categories if they exist
+    categories = []
+    if hasattr(post, 'categories') and hasattr(post.categories, 'all'):
+        categories = sorted([c.slug for c in post.categories.all()])
+    if categories:
+        data["categories"] = categories
+
+    # Only include canonical URL if it's provided and non-empty
+    canonical = getattr(post, "canonical_url", "") or ""
+    if canonical and canonical.strip():
+        data["canonical"] = canonical.strip()
+
+    # Only include description if it's provided and non-empty
+    description = getattr(post, "description", "") or ""
+    if description and description.strip():
+        data["description"] = description.strip()
 
     # Merge any extra keys from the body's front-matter into the exported
     # front-matter so we produce a single authoritative YAML block. We keep
@@ -125,13 +137,23 @@ def _front_matter(post, site):
         if "title" in merged and not merged.get("title"):
             # empty/falsey title provided in front-matter -> remove it
             merged.pop("title", None)
-        # now overlay server-derived authoritative fields
+        
+        # Clean up empty values from front-matter body as well
+        for key in ["canonical", "description", "tags"]:
+            if key in merged:
+                value = merged[key]
+                if not value or (isinstance(value, (list, tuple)) and len(value) == 0) or (isinstance(value, str) and not value.strip()):
+                    merged.pop(key, None)
+
+        # now overlay server-derived authoritative fields (only non-empty ones)
         merged["layout"] = data["layout"]
         merged["date"] = data["date"]
-        merged["categories"] = data["categories"]
-        merged["tags"] = data["tags"]
-        merged["canonical"] = data["canonical"]
-        merged["description"] = data["description"]
+        if "categories" in data:
+            merged["categories"] = data["categories"]
+        if "canonical" in data:
+            merged["canonical"] = data["canonical"]
+        if "description" in data:
+            merged["description"] = data["description"]
         data = merged
 
     # Use proper YAML serialization instead of manual string building
@@ -260,7 +282,7 @@ def compute_canonical_url(post, site):
     if not (base_url and date and slug):
         return None
     base_url = base_url.rstrip("/")
-    return f"{base_url}/{date.year:04d}/{date.month:02d}/{date.day():02d}/{slug}.html"
+    return f"{base_url}/{date.year:04d}/{date.month:02d}/{date.day:02d}/{slug}.html"
 
 
 def _git(cwd, *args, check=True, quiet=False):
