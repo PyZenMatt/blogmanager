@@ -151,6 +151,48 @@ def render_markdown(post, site):
     return fm + "\n" + body
 
 
+def _normalize_leading_frontmatter(content: str) -> str:
+    """Ensure there's a single YAML front-matter block at the top of the content.
+
+    If multiple leading blocks exist, merge them with precedence to the later
+    blocks (assumed authored by user) for user keys, while keeping server-
+    authoritative keys (date, categories) from the exporter.
+    Returns the normalized full content (single front-matter + body).
+    """
+    import yaml
+    if not content:
+        return content
+    parts = []
+    rest = content
+    # Extract all consecutive front-matter blocks at start
+    while True:
+        m = FRONTMATTER_RE.match(rest)
+        if not m:
+            break
+        parts.append(m.group(1))
+        rest = rest[m.end():]
+
+    if not parts:
+        return content
+
+    # merge parts: earlier parts first, later parts override earlier keys
+    merged = {}
+    for part in parts:
+        try:
+            data = yaml.safe_load(part) or {}
+            if isinstance(data, dict):
+                merged.update(data)
+        except Exception:
+            # if a block fails to parse, skip it (we'll warn at call site)
+            continue
+
+    # ensure server-authoritative fields remain as in our generated top-level
+    # (we expect caller to compute these and re-insert as needed)
+    fm_text = yaml.dump(merged, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    normalized = f"---\n{fm_text}---\n{rest.lstrip('\n') or ''}"
+    return normalized
+
+
 def build_post_relpath(post, site):
     date = _select_date(post)
     slug = getattr(post, "slug", None) or slugify_title(getattr(post, "title", ""))
@@ -347,14 +389,24 @@ def export_post(post):
     except Exception:
         logger.exception("[export][validator] Unexpected validator error for post id=%s; aborting export.", getattr(post, 'id', None))
         return
-    if hasattr(post, "render_markdown"):
+    # Prefer an instance-defined render_markdown if provided, otherwise use
+    # the module-level renderer which merges body front-matter correctly and
+    # intentionally does NOT inject the DB post.title into the exported file.
+    if hasattr(post, "render_markdown") and callable(getattr(post, "render_markdown")):
         content = post.render_markdown()
     else:
-        fm = f"---\ntitle: {getattr(post, 'title', '')}\n---\n"
-        body = getattr(post, 'content', '') or getattr(post, 'body', '') or ''
-        if not body.endswith("\n"):
-            body = body + "\n"
-        content = fm + "\n" + body
+        content = render_markdown(post, site)
+
+    # Final normalization: coalesce multiple leading front-matter blocks into a
+    # single authoritative block. This protects against double-FM being prepended
+    # by templates or other layers (production export edge-case).
+    try:
+        normed = _normalize_leading_frontmatter(content)
+        if normed != content:
+            logger.warning("[export][normalize] Normalized multiple front-matter blocks for post id=%s", getattr(post, 'pk', None))
+            content = normed
+    except Exception:
+        logger.exception("[export][normalize] Failed normalizing front-matter for post id=%s", getattr(post, 'pk', None))
 
     new_hash = hashlib.md5(content.encode("utf-8")).hexdigest()[:10]
 

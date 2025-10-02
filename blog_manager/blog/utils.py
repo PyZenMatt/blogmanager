@@ -14,7 +14,9 @@ logger = logging.getLogger(__name__)
 def build_jekyll_front_matter(post) -> Dict[str, Any]:
     # Minimale (espandere secondo il vostro schema)
     return {
-        "title": getattr(post, "title", ""),
+        # Intentionally do NOT export DB title here. Exported title should
+        # come only from the post's body front-matter when present.
+        "title": "",
         "slug": getattr(post, "slug", ""),
         "date": getattr(post, "date", getattr(post, "published_at", None)),
         "categories": getattr(post, "categories", []) or [],
@@ -25,6 +27,12 @@ def build_jekyll_front_matter(post) -> Dict[str, Any]:
 
 def render_markdown_for_export(post) -> str:
     fm = build_jekyll_front_matter(post)
+    # If the post body contains front-matter with an explicit title, export it.
+    txt = getattr(post, "content", None) or getattr(post, "body", "") or ""
+    from . import extract_frontmatter
+    body_fm = extract_frontmatter(txt)
+    if isinstance(body_fm, dict) and body_fm.get("title"):
+        fm["title"] = body_fm.get("title")
     # YAML deterministico: chiavi ordinate
     lines = ["---"]
     for k in sorted(fm.keys()):

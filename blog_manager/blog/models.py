@@ -129,8 +129,9 @@ class Site(models.Model):
         # Otherwise, initialize a git repo and add origin if missing.
         try:
             repo = (self.repo_path or "").strip()
-            if repo:
-                os.makedirs(repo, exist_ok=True)
+            # If an explicit repo_path is provided, do NOT auto-create it here.
+            # Only operate on the working copy if the directory already exists.
+            if repo and os.path.isdir(repo):
                 git_dir = os.path.join(repo, ".git")
                 remote = None
                 if getattr(self, "repo_owner", None) and getattr(self, "repo_name", None):
@@ -415,18 +416,10 @@ class Post(models.Model):
             if not repo_path and getattr(settings, "BLOG_REPO_BASE", None):
                 fallback = os.path.join(settings.BLOG_REPO_BASE, site.slug)
             if repo_path and not os.path.isdir(repo_path):
-                # Try to create the configured repo_path automatically (best-effort)
-                try:
-                    os.makedirs(repo_path, exist_ok=True)
-                except Exception as e:
-                    raise ValidationError({"site": f"repo_path inesistente: {repo_path} (creation failed: {e})"})
-                # If creation succeeded, persist on the Site model so subsequent runs see it
-                try:
-                    site.repo_path = repo_path
-                    site.save()
-                except Exception:
-                    # ignore persistence failures; directory exists and that's sufficient
-                    pass
+                # If the user explicitly configured a repo_path that does not exist,
+                # consider this a configuration error and fail validation. Do not
+                # attempt to create arbitrary paths on behalf of the user here.
+                raise ValidationError({"site": f"repo_path inesistente: {repo_path}"})
             if (not repo_path) and fallback and not os.path.isdir(fallback):
                 # Best-effort: try to create the fallback directory so sync can proceed.
                 try:

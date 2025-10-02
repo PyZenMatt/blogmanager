@@ -488,17 +488,22 @@ class PostAdmin(admin.ModelAdmin):
                     self.message_user(request, "Repo deletions are disabled by configuration; performing DB-only deletion.", level=messages.WARNING)
                     mode = "db"
 
+                    logger.debug("posts queryset pks=%s", [p.pk for p in posts])
                 for p in posts:
                     if mode == "repo" and allow_repo_effective:
                         # attempt to delete from repo first (and optionally sync local working copy)
                         try:
+                            logger.debug("About to call delete_post_from_repo: %r", delete_post_from_repo)
                             res = delete_post_from_repo(p, message=f"admin: delete post #{p.pk}", sync_local=True)
+                            logger.debug("delete result = %r", res)
                             status = res.get("status")
                             commit_sha = res.get("commit_sha")
                             html_url = res.get("html_url")
                             msg = res.get("message")
                             local_sync_msg = res.get("local_sync_message")
                             results.append((p.pk, "repo", status, commit_sha, html_url, msg, local_sync_msg))
+                            logger.debug("appended repo result = %r", results[-1])
+                            logger.debug("current results list = %r", results)
                         except Exception as e:
                             results.append((p.pk, "repo", "error", None, None, str(e), None))
 
@@ -506,9 +511,12 @@ class PostAdmin(admin.ModelAdmin):
                         last = results[-1]
                         if last[2] in ("deleted", "already_absent"):
                             try:
+                                logger.debug('attempting to delete post from DB pk=%s', p.pk)
                                 p.delete()
+                                logger.debug('deleted post pk=%s', p.pk)
                                 results.append((p.pk, "db", "deleted", None, None))
-                            except Exception:
+                            except Exception as e:
+                                logger.exception('delete raised for pk=%s: %s', p.pk, e)
                                 results.append((p.pk, "db", "error", None, None))
                         else:
                             # skip DB deletion and report repo deletion failure

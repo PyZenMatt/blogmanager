@@ -27,7 +27,8 @@ def slug_from_filename(filename: str, max_len: int = 75) -> str:
 def build_jekyll_front_matter(post) -> Dict[str, Any]:
 	# Minimale (espandere secondo il vostro schema)
 	return {
-		"title": getattr(post, "title", ""),
+		# Do not export DB title; title will be taken from body front-matter if present
+		"title": "",
 		"slug": getattr(post, "slug", ""),
 		"date": getattr(post, "date", getattr(post, "published_at", None)),
 		"categories": getattr(post, "categories", []) or [],
@@ -37,6 +38,11 @@ def build_jekyll_front_matter(post) -> Dict[str, Any]:
 
 def render_markdown_for_export(post) -> str:
 	fm = build_jekyll_front_matter(post)
+	# If the post body contains front-matter with an explicit title, export it.
+	txt = getattr(post, "content", None) or getattr(post, "body", "") or ""
+	body_fm = extract_frontmatter(txt)
+	if isinstance(body_fm, dict) and body_fm.get("title"):
+		fm["title"] = body_fm.get("title")
 	# YAML deterministico: chiavi ordinate
 	lines = ["---"]
 	for k in sorted(fm.keys()):
