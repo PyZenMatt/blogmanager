@@ -221,10 +221,12 @@ class Site(models.Model):
 class Category(models.Model):
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="categories")
     name = models.CharField(max_length=100)
-    slug = models.SlugField()  # Keep for backwards compatibility
+    # Increase slug lengths to be safe for MySQL (default SlugField max_length is 50)
+    # Keep for backwards compatibility but allow longer combined slugs (cluster-subcluster)
+    slug = models.SlugField(max_length=200)
     # New normalized fields added in migration 0035
-    cluster_slug = models.SlugField(help_text="Normalized cluster identifier (e.g., django, frontend)")
-    subcluster_slug = models.SlugField(blank=True, null=True, help_text="Optional subcluster identifier (e.g., forms, authentication)")
+    cluster_slug = models.SlugField(max_length=200, help_text="Normalized cluster identifier (e.g., django, frontend)")
+    subcluster_slug = models.SlugField(max_length=200, blank=True, null=True, help_text="Optional subcluster identifier (e.g., forms, authentication)")
     meta_title = models.CharField(max_length=70, blank=True)
     meta_description = models.CharField(max_length=180, blank=True)
 

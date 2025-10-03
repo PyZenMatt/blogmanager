@@ -6,6 +6,7 @@ from .models import Post, Category
 from django.utils.text import slugify as dj_slugify
 from django.db.utils import DataError
 import uuid
+import hashlib
 
 fm_re = re.compile(r'^\s*---\s*\n([\s\S]*?)\n---\s*\n', re.M)
 
@@ -103,6 +104,16 @@ def ensure_categories_from_post(sender, instance, created, **kwargs):
             compat_slug = f"{cluster_slug}-{subcluster_slug}"
         else:
             compat_slug = cluster_slug
+
+        # Defensive: ensure compat_slug fits DB column limits (MySQL enforces VARCHAR length)
+        # If too long, truncate and append a short hash to preserve uniqueness.
+        MAX_COMPAT_SLUG = 200
+        def _short_hash(s: str, length: int = 8) -> str:
+            return hashlib.sha1(s.encode('utf-8')).hexdigest()[:length]
+
+        if len(compat_slug) > MAX_COMPAT_SLUG:
+            truncated = compat_slug[: (MAX_COMPAT_SLUG - 1 - 8)]  # leave room for '-' and hash
+            compat_slug = f"{truncated}-{_short_hash(compat_slug)}"
         
         try:
             cat_obj, cat_created = Category.objects.get_or_create(
