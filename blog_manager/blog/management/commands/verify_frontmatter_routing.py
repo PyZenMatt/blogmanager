@@ -41,6 +41,17 @@ class Command(BaseCommand):
             action='store_true',
             help='Enable verbose logging'
         )
+        parser.add_argument(
+            '--dry-run',
+            action='store_true',
+            help='Simulate export operations without making changes'
+        )
+        parser.add_argument(
+            '--collision-policy',
+            choices=['fail', 'increment'],
+            default='increment',
+            help='Collision handling policy (default: increment)'
+        )
 
     def handle(self, *args, **options):
         if options['verbose']:
@@ -49,6 +60,11 @@ class Command(BaseCommand):
         site_slug = options['site']
         repo_base = options['repo_base']
         apply_fixes = options['apply']
+        dry_run = options['dry_run']
+        collision_policy = options['collision_policy']
+        
+        if dry_run:
+            self.stdout.write(self.style.WARNING('🧪 DRY-RUN MODE: No changes will be made'))
         
         if not repo_base:
             self.stdout.write(self.style.ERROR('BLOG_REPO_BASE not configured'))

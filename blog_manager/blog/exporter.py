@@ -447,36 +447,81 @@ def _is_ahead(cwd, branch):
         return False
 
 
+def _resolve_collision(dest_path, policy="increment"):
+    """Resolve filename collision using specified policy.
+    
+    Args:
+        dest_path: Original destination path
+        policy: 'fail' or 'increment'
+        
+    Returns:
+        str: Resolved path (original or with suffix)
+        
+    Raises:
+        FrontMatterValidationError: If policy is 'fail' and collision exists
+    """
+    if not os.path.exists(dest_path):
+        return dest_path
+        
+    if policy == "fail":
+        raise FrontMatterValidationError(f"Destination file already exists: {dest_path}")
+        
+    # Increment strategy: add -1, -2, etc.
+    base, ext = os.path.splitext(dest_path)
+    counter = 1
+    
+    while True:
+        new_path = f"{base}-{counter}{ext}"
+        if not os.path.exists(new_path):
+            logger.warning("[export][collision] resolved '%s' -> '%s' (policy=%s)", 
+                          dest_path, new_path, policy)
+            return new_path
+        counter += 1
+        
+        # Safety limit to prevent infinite loops
+        if counter > 1000:
+            raise FrontMatterValidationError(f"Too many collisions for {dest_path}")
+
+
 def _working_tree_clean(cwd):
     r = _git(cwd, "status", "--porcelain", check=False, quiet=True)
     return (r.stdout or "").strip() == ""
 
 
-def _handle_file_move(repo_dir, old_path, new_path):
+def _handle_file_move(repo_dir, old_path, new_path, collision_policy="increment"):
     """Handle atomic file move when post routing changes.
     
     Args:
         repo_dir: Repository root directory
         old_path: Current file path (relative to repo_dir)
         new_path: New file path (relative to repo_dir)
+        collision_policy: 'fail' or 'increment' for handling collisions
         
     Returns:
-        bool: True if file was moved, False if no move needed
+        tuple: (moved: bool, final_path: str) - True if file was moved, final destination path
     """
     if old_path == new_path:
-        return False
+        return False, new_path
         
     old_abs = os.path.join(repo_dir, old_path)
     new_abs = os.path.join(repo_dir, new_path)
     
     if not os.path.exists(old_abs):
         logger.info("[export][move] old_path='%s' does not exist, no move needed", old_path)
-        return False
+        return False, new_path
     
+    # Resolve collision if destination exists
     if os.path.exists(new_abs):
-        logger.warning("[export][move] collision: new_path='%s' already exists, removing old file", new_path)
-        os.remove(old_abs)
-        return True
+        if collision_policy == "increment":
+            # Find a unique name using increment strategy
+            resolved_abs = _resolve_collision(new_abs, policy="increment")
+            resolved_rel = os.path.relpath(resolved_abs, repo_dir)
+            logger.warning("[export][move] collision: new_path='%s' resolved to '%s'", new_path, resolved_rel)
+            new_abs = resolved_abs
+            new_path = resolved_rel
+        else:  # policy == "fail"
+            logger.error("[export][move] collision: new_path='%s' already exists (policy=fail)", new_path)
+            raise FrontMatterValidationError(f"Destination file exists and collision policy is 'fail': {new_path}")
     
     # Create destination directory if needed
     os.makedirs(os.path.dirname(new_abs), exist_ok=True)
@@ -497,7 +542,7 @@ def _handle_file_move(repo_dir, old_path, new_path):
         pass  # Directory not empty or other error, ignore
     
     logger.info("[export][move] moved: '%s' -> '%s'", old_path, new_path)
-    return True
+    return True, new_path
 
 
 def _write_atomic(path, content):
@@ -508,13 +553,99 @@ def _write_atomic(path, content):
     os.replace(tmp, path)
 
 
-def export_post(post):
+def _simulate_export(post, site, content, new_rel_path, old_rel_path, collision_policy):
+    """Simulate export operations for dry-run mode.
+    
+    Args:
+        post: Post instance
+        site: Site instance  
+        content: Rendered content
+        new_rel_path: New destination path
+        old_rel_path: Current export path (may be None)
+        collision_policy: Collision handling policy
+        
+    Returns:
+        dict: Simulation results with actions and warnings
     """
-    Export robusto:
+    post_id = getattr(post, 'id', None)
+    repo_dir = getattr(site, 'repo_path', None)
+    
+    actions = []
+    warnings = []
+    
+    # Check if this would be a move operation
+    if old_rel_path and old_rel_path != new_rel_path:
+        old_abs = os.path.join(repo_dir, old_rel_path) if repo_dir else None
+        new_abs = os.path.join(repo_dir, new_rel_path) if repo_dir else None
+        
+        if old_abs and os.path.exists(old_abs):
+            if new_abs and os.path.exists(new_abs):
+                if collision_policy == "fail":
+                    warnings.append(f"COLLISION: {new_rel_path} exists (policy=fail would block)")
+                else:
+                    resolved_path = _resolve_collision(new_abs, policy="increment")
+                    resolved_rel = os.path.relpath(resolved_path, repo_dir)
+                    warnings.append(f"COLLISION: {new_rel_path} -> {resolved_rel} (increment)")
+                    actions.append(f"MOVE: {old_rel_path} -> {resolved_rel}")
+            else:
+                actions.append(f"MOVE: {old_rel_path} -> {new_rel_path}")
+        else:
+            actions.append(f"CREATE: {new_rel_path} (old file missing)")
+    else:
+        # Regular create/update - check for collision
+        new_abs = os.path.join(repo_dir, new_rel_path) if repo_dir else None
+        if new_abs and os.path.exists(new_abs):
+            # Check if this post has been exported before to this exact path
+            if old_rel_path == new_rel_path:
+                actions.append(f"UPDATE: {new_rel_path}")
+            else:
+                # This is a collision with a different file
+                if collision_policy == "fail":
+                    warnings.append(f"COLLISION: {new_rel_path} exists (policy=fail would block)")
+                else:
+                    resolved_path = _resolve_collision(new_abs, policy="increment")
+                    resolved_rel = os.path.relpath(resolved_path, repo_dir)
+                    warnings.append(f"COLLISION: {new_rel_path} -> {resolved_rel} (increment)")
+                    actions.append(f"CREATE: {resolved_rel}")
+        else:
+            actions.append(f"CREATE: {new_rel_path}")
+    
+    # Log dry-run results
+    logger.info("[DRY-RUN] post_id=%s actions=%s", post_id, actions)
+    if warnings:
+        logger.warning("[DRY-RUN] post_id=%s warnings=%s", post_id, warnings)
+        
+    return {
+        'actions': actions,
+        'warnings': warnings,
+        'would_succeed': len([w for w in warnings if 'would block' in w]) == 0
+    }
+
+
+def export_post(post, dry_run=None, collision_policy=None):
+    """
+    Export robusto con supporto dry-run e gestione collisioni configurabile:
     - Scrive file se hash cambia OPPURE file manca OPPURE non è tracciato.
     - Se 'no change', ma il repo è ahead di origin, tenta solo push.
     - Aggiorna metadati (exported_hash, exported_at, last_export_path, last_commit_sha) solo dopo push OK.
+    - Supporta dry-run mode per simulazione operazioni.
+    - Gestione collisioni configurabile (fail/increment).
+    
+    Args:
+        post: Post instance to export
+        dry_run: Override settings for dry-run mode (None = use settings)
+        collision_policy: Override settings for collision policy (None = use settings)
     """
+    from django.conf import settings
+    
+    # Get configuration from settings with parameter overrides
+    if dry_run is None:
+        dry_run = getattr(settings, 'EXPORT_DRY_RUN', False)
+    if collision_policy is None:
+        collision_policy = getattr(settings, 'EXPORT_COLLISION_POLICY', 'increment')
+    
+    if dry_run:
+        logger.info("[DRY-RUN] Starting export simulation for post_id=%s", getattr(post, 'id', None))
     site = getattr(post, "site", None)
     site_slug = getattr(site, "slug", getattr(site, "id", "?")) if site else "?"
     repo_dir = getattr(site, "repo_path", None) if site else None
@@ -579,21 +710,33 @@ def export_post(post):
                     getattr(post, 'id', None), str(e))
         return
 
-    # 3) Handle file move if path changed
+    # 3) Handle file move if path changed or run dry-run simulation
     old_rel_path = getattr(post, 'last_export_path', None)
     moved = False
+    final_path = new_rel_path
+    
+    # Dry-run simulation
+    if dry_run:
+        simulation = _simulate_export(post, site, content, new_rel_path, old_rel_path, collision_policy)
+        logger.info("[DRY-RUN] post_id=%s simulation complete: %s", 
+                   getattr(post, 'id', None), simulation['actions'])
+        if simulation['warnings']:
+            for warning in simulation['warnings']:
+                logger.warning("[DRY-RUN] post_id=%s %s", getattr(post, 'id', None), warning)
+        return simulation  # Return simulation results, don't proceed
+    
     if old_rel_path and old_rel_path != new_rel_path:
         logger.info("[export][move] post_id=%s path_change: '%s' -> '%s'", 
                    getattr(post, 'id', None), old_rel_path, new_rel_path)
         try:
-            moved = _handle_file_move(repo_dir, old_rel_path, new_rel_path)
+            moved, final_path = _handle_file_move(repo_dir, old_rel_path, new_rel_path, collision_policy)
         except Exception as e:
             logger.error("[export][move] Failed to move post id=%s from '%s' to '%s': %s", 
                         getattr(post, 'id', None), old_rel_path, new_rel_path, str(e))
             return
 
-    # Use new path for all subsequent operations
-    rel_path = new_rel_path
+    # Use final path for all subsequent operations (may be different from new_rel_path due to collision resolution)
+    rel_path = final_path
 
     # Security: ensure rel_path is truly relative and does not escape repo_dir
     if os.path.isabs(rel_path) or rel_path.startswith("..") or ".." + os.path.sep in rel_path:
@@ -602,6 +745,19 @@ def export_post(post):
 
     rel_path = rel_path.replace("\\", "/")  # normalize windows separators
     abs_path = os.path.join(repo_dir, rel_path)
+    
+    # Handle collision for new files (not moves)
+    if not moved and os.path.exists(abs_path):
+        try:
+            resolved_abs = _resolve_collision(abs_path, policy=collision_policy)
+            rel_path = os.path.relpath(resolved_abs, repo_dir)
+            abs_path = resolved_abs
+            logger.info("[export][collision] post_id=%s resolved collision: %s", 
+                       getattr(post, 'id', None), rel_path)
+        except FrontMatterValidationError as e:
+            logger.error("[export][collision] post_id=%s collision resolution failed: %s", 
+                        getattr(post, 'id', None), str(e))
+            return
 
     # Pre-export validation: ensure filename follows _posts/YYYY-MM-DD-<slug>.md
     try:

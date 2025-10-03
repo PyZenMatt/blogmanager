@@ -221,6 +221,14 @@ SPECTACULAR_SETTINGS = {
 
 # Feature flag export (ora dopo aver caricato env)
 EXPORT_ENABLED = env.bool("EXPORT_ENABLED", default=True)
+
+# Export collision handling policy: 'fail' or 'increment'
+EXPORT_COLLISION_POLICY = env.str("EXPORT_COLLISION_POLICY", default="increment")
+
+# Export dry-run mode (safety default)
+EXPORT_DRY_RUN = env.bool("EXPORT_DRY_RUN", default=False)
+
+# Media storage
 BLOG_REPO_BASE = env("BLOG_REPO_BASE", default="")
 # Allow dangerous repo deletes from admin UI. Default False for safety.
 ALLOW_REPO_DELETE = env.bool("ALLOW_REPO_DELETE", default=False)

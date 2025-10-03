@@ -212,8 +212,9 @@ class TestFileMove(TestCase):
 
     def test_handle_file_move_same_path(self):
         """Test no move when paths are the same."""
-        moved = _handle_file_move(self.temp_dir, "same/path.md", "same/path.md")
+        moved, final_path = _handle_file_move(self.temp_dir, "same/path.md", "same/path.md")
         self.assertFalse(moved)
+        self.assertEqual(final_path, "same/path.md")
 
     def test_handle_file_move_success(self):
         """Test successful file move."""
@@ -225,9 +226,10 @@ class TestFileMove(TestCase):
             f.write("content")
         
         # Move to new location
-        moved = _handle_file_move(self.temp_dir, "old/post.md", "new/category/post.md")
+        moved, final_path = _handle_file_move(self.temp_dir, "old/post.md", "new/category/post.md")
         
         self.assertTrue(moved)
+        self.assertEqual(final_path, "new/category/post.md")
         self.assertFalse(os.path.exists(old_file))
         
         new_file = os.path.join(self.temp_dir, "new/category/post.md")
@@ -238,8 +240,9 @@ class TestFileMove(TestCase):
 
     def test_handle_file_move_source_missing(self):
         """Test move when source file doesn't exist."""
-        moved = _handle_file_move(self.temp_dir, "missing/file.md", "new/location.md")
+        moved, final_path = _handle_file_move(self.temp_dir, "missing/file.md", "new/location.md")
         self.assertFalse(moved)
+        self.assertEqual(final_path, "new/location.md")
 
     def test_handle_file_move_destination_exists(self):
         """Test move when destination already exists."""
@@ -257,16 +260,22 @@ class TestFileMove(TestCase):
         with open(new_file, 'w') as f:
             f.write("new content")
         
-        # Attempt move (should remove old file due to collision)
-        moved = _handle_file_move(self.temp_dir, "old/post.md", "new/post.md")
+        # Attempt move (should resolve collision with increment policy)
+        moved, final_path = _handle_file_move(self.temp_dir, "old/post.md", "new/post.md")
         
         self.assertTrue(moved)
-        self.assertFalse(os.path.exists(old_file))
-        self.assertTrue(os.path.exists(new_file))
+        # Should have been moved to incremented path
+        self.assertEqual(final_path, "new/post-1.md")
         
-        # New file should retain its content
-        with open(new_file, 'r') as f:
-            self.assertEqual(f.read(), "new content")
+        # Check files
+        self.assertFalse(os.path.exists(old_file))  # Old file should be gone
+        self.assertTrue(os.path.exists(new_file))   # Original destination should still exist
+        
+        # Check the incremented file exists and has old content
+        incremented_file = os.path.join(self.temp_dir, "new/post-1.md")
+        self.assertTrue(os.path.exists(incremented_file))
+        with open(incremented_file, 'r') as f:
+            self.assertEqual(f.read(), "old content")
 
 
 class TestRenderMarkdown(TestCase):
@@ -457,3 +466,134 @@ class TestExportPost(TestCase):
         # Post metadata should be updated
         post.refresh_from_db()
         self.assertEqual(post.last_export_path, "_posts/python/2024-01-15-test-post.md")
+
+
+class TestChecklistScenarios(TestCase):
+    """Test the 4 specific scenarios from the operational checklist."""
+    
+    def setUp(self):
+        self.site = Site.objects.create(
+            name="Test Site",
+            slug="test-site",
+            domain="example.com"
+        )
+        self.author = Author.objects.create(
+            site=self.site,
+            name="Test Author",
+            slug="test-author"
+        )
+        self.temp_dir = tempfile.mkdtemp()
+        self.site.repo_path = self.temp_dir
+        self.site.save()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_scenario_1_solo_cluster(self):
+        """Test Case 1: Solo cluster → file nella cartella del cluster."""
+        post = Post.objects.create(
+            site=self.site,
+            title="Django Tutorial",
+            slug="django-tutorial",
+            content="---\ncategories: [django]\n---\nDjango content here",
+            published_at=datetime(2024, 1, 15, 12, 0, tzinfo=tz.utc),
+            author=self.author
+        )
+        
+        # Test path building
+        body = post.content
+        fm_data = _extract_frontmatter_from_body(body)
+        expected_path = build_post_relpath(post, self.site, fm_data)
+        
+        # Expected: _posts/django/2024-01-15-django-tutorial.md
+        self.assertEqual(expected_path, "_posts/django/2024-01-15-django-tutorial.md")
+        
+        # Test actual export (dry-run)
+        simulation = export_post(post, dry_run=True)
+        self.assertIn("CREATE: _posts/django/2024-01-15-django-tutorial.md", simulation['actions'])
+        self.assertTrue(simulation['would_succeed'])
+
+    def test_scenario_2_cluster_plus_subcluster(self):
+        """Test Case 2: Cluster+subcluster → file nella cartella del subcluster."""
+        post = Post.objects.create(
+            site=self.site,
+            title="Advanced Django",
+            slug="advanced-django",
+            content="---\ncategories: [django]\nsubcluster: tutorials\n---\nAdvanced Django content",
+            published_at=datetime(2024, 1, 16, 12, 0, tzinfo=tz.utc),
+            author=self.author
+        )
+        
+        # Test path building
+        body = post.content
+        fm_data = _extract_frontmatter_from_body(body)
+        expected_path = build_post_relpath(post, self.site, fm_data)
+        
+        # Expected: _posts/django/tutorials/2024-01-16-advanced-django.md
+        self.assertEqual(expected_path, "_posts/django/tutorials/2024-01-16-advanced-django.md")
+        
+        # Test actual export (dry-run)
+        simulation = export_post(post, dry_run=True)
+        self.assertIn("CREATE: _posts/django/tutorials/2024-01-16-advanced-django.md", simulation['actions'])
+        self.assertTrue(simulation['would_succeed'])
+
+    def test_scenario_3_cambio_subcluster(self):
+        """Test Case 3: Cambio subcluster → file spostato e vecchio rimosso."""
+        post = Post.objects.create(
+            site=self.site,
+            title="Django Basics",
+            slug="django-basics",
+            content="---\ncategories: [django]\nsubcluster: basics\n---\nBasic Django content",
+            published_at=datetime(2024, 1, 17, 12, 0, tzinfo=tz.utc),
+            last_export_path="_posts/django/basics/2024-01-17-django-basics.md",
+            author=self.author
+        )
+        
+        # Create the old file
+        old_path = os.path.join(self.temp_dir, "_posts/django/basics/2024-01-17-django-basics.md")
+        os.makedirs(os.path.dirname(old_path), exist_ok=True)
+        with open(old_path, 'w') as f:
+            f.write("old content")
+        
+        # Change subcluster
+        post.content = "---\ncategories: [django]\nsubcluster: advanced\n---\nAdvanced Django content"
+        post.save()
+        
+        # Test dry-run first
+        simulation = export_post(post, dry_run=True)
+        expected_move = "MOVE: _posts/django/basics/2024-01-17-django-basics.md -> _posts/django/advanced/2024-01-17-django-basics.md"
+        self.assertIn(expected_move, simulation['actions'])
+        self.assertTrue(simulation['would_succeed'])
+
+    def test_scenario_4_collisione_filename(self):
+        """Test Case 4: Collisione filename → comportamento conforme alla policy."""
+        # Create existing file
+        existing_path = os.path.join(self.temp_dir, "_posts/django/2024-01-18-tutorial.md")
+        os.makedirs(os.path.dirname(existing_path), exist_ok=True)
+        with open(existing_path, 'w') as f:
+            f.write("existing content")
+        
+        # Create new post with same slug and date
+        post = Post.objects.create(
+            site=self.site,
+            title="Tutorial",
+            slug="tutorial",
+            content="---\ncategories: [django]\n---\nNew tutorial content",
+            published_at=datetime(2024, 1, 18, 12, 0, tzinfo=tz.utc),
+            author=self.author
+        )
+        
+        # Test with increment policy (default)
+        simulation = export_post(post, dry_run=True, collision_policy="increment")
+        # Should warn about collision and suggest increment
+        collision_warnings = [w for w in simulation['warnings'] if 'COLLISION' in w]
+        self.assertTrue(len(collision_warnings) > 0)
+        self.assertIn("tutorial-1.md", str(collision_warnings))
+        
+        # Test with fail policy
+        simulation_fail = export_post(post, dry_run=True, collision_policy="fail")
+        # Should warn that fail policy would block
+        fail_warnings = [w for w in simulation_fail['warnings'] if 'would block' in w]
+        self.assertTrue(len(fail_warnings) > 0)
+        self.assertFalse(simulation_fail['would_succeed'])
