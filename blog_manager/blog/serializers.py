@@ -25,6 +25,15 @@ class PostWriteSerializer(serializers.ModelSerializer):
             # copy content into body so DRF field mapping treats it correctly
             data = dict(data)
             data["body"] = data.get("content")
+        # Disallow clients from setting categories via the write API. Categories
+        # are derived exclusively from front-matter and the sync/export pipeline.
+        # If a client sends a `categories` key, raise a validation error so
+        # callers receive a clear signal that this field is not writable.
+        if isinstance(data, dict) and "categories" in data:
+            from rest_framework import serializers as drf_serializers
+            raise drf_serializers.ValidationError({
+                "categories": "Categories cannot be set via the write API; they are derived from front-matter."
+            })
         return super().to_internal_value(data)
 
     def validate(self, attrs):

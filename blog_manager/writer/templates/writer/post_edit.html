@@ -40,11 +40,16 @@
           <div class="invalid-feedback">Seleziona un autore.</div>
         </div>
         <div class="col-md-12">
-          <label class="form-label">Body</label>
+                  <label class="form-label">Body</label>
           <div class="editor-fixed">
             <textarea name="body" id="body" class="form-control" rows="10" required></textarea>
           </div>
         </div>
+                <div class="col-md-12">
+                  <label class="form-label">Categories (read-only)</label>
+                  <div id="categoriesReadout" class="form-control-plaintext text-muted">&mdash;</div>
+                  <div class="form-text">Categories are derived from front-matter and cannot be edited here.</div>
+                </div>
   <!-- SEO/meta fields removed: body and core fields only -->
       </div>
       <div class="mt-4">
@@ -168,13 +173,22 @@ async function loadPost() {
       authorSel.value = v;
     }
 
-    // set categories if present
-    if (Array.isArray(data.categories) && data.categories.length) {
-      const catSel = document.getElementById('catSelect');
-      if (catSel) {
-        const vals = data.categories.map(c => String(c));
-        Array.from(catSel.options).forEach(o => { o.selected = vals.includes(o.value); });
+    // populate read-only categories display (if the API provides names or nested objects)
+    try {
+      const readout = document.getElementById('categoriesReadout');
+      if (readout) {
+        if (Array.isArray(data.categories) && data.categories.length) {
+          // API may return either list of ids or nested objects; prefer readable names
+          const names = data.categories.map(c => (typeof c === 'object' ? (c.name || c.title || c.slug) : String(c))).filter(Boolean);
+          readout.textContent = names.length ? names.join(', ') : (data.category_names || '—');
+        } else if (data.category_names) {
+          readout.textContent = Array.isArray(data.category_names) ? data.category_names.join(', ') : String(data.category_names);
+        } else {
+          readout.textContent = '—';
+        }
       }
+    } catch (e) {
+      console.warn('Failed to populate categories readout', e);
     }
 
     // status

@@ -82,11 +82,9 @@
 						</select>
 					</div>
 
-					<div class="col-md-12">
-						<label class="form-label">Categories</label>
-						<select multiple name="categories" id="catSelect" class="form-select"></select>
-						<div class="form-text">Tieni premuto Ctrl/Cmd per selezioni multiple.</div>
-					</div>
+					<!-- Categories are derived from post front-matter and managed by the sync/export pipeline.
+						 The writer UI no longer allows editing categories directly. Display-only area could be
+						 added if needed, but the selection control has been removed to make categories read-only. -->
 
 					<div class="col-md-6">
 						<label class="form-label">Published at</label>
@@ -201,12 +199,19 @@
 			} catch (e) {
 				elResult.innerHTML = `<div class="alert alert-danger">Errore nel caricamento opzioni: ${e}</div>`;
 			}
-		await loadCategoriesForSite();
+		// Only try to load categories if the categories select exists (we removed the edit control in the UI)
+		if (document.getElementById('catSelect')) {
+			await loadCategoriesForSite();
+			const siteSelForCats = document.getElementById('siteSelect');
+			if (siteSelForCats) siteSelForCats.addEventListener('change', loadCategoriesForSite);
+		}
 	}
 
 	async function loadCategoriesForSite() {
-		const siteId = document.getElementById('siteSelect').value;
 		const catSel = document.getElementById('catSelect');
+		if (!catSel) return; // nothing to do when the select was removed
+		const siteEl = document.getElementById('siteSelect');
+		const siteId = siteEl ? siteEl.value : null;
 		catSel.innerHTML = '';
 		if (!siteId) return;
 		const catsPath = (window.WriterAPI && WriterAPI.API && WriterAPI.API.CATEGORIES) ? `${WriterAPI.API.CATEGORIES}?site=${siteId}` : `/api/blog/categories/?site=${siteId}`;
@@ -214,7 +219,6 @@
 		const cats = await res.json().catch(()=>[]);
 		(cats.results || cats).forEach(c => catSel.insertAdjacentHTML('beforeend', `<option value="${c.id}">${c.name || c.title}</option>`));
 	}
-	document.getElementById('siteSelect').addEventListener('change', loadCategoriesForSite);
 	loadOptions();
 
 	// --- Autosave (localStorage) and Preview ---
@@ -231,9 +235,7 @@
 				document.getElementById('siteSelect').value = d.site || '';
 				document.getElementById('authorSelect').value = d.author || '';
 				document.getElementById('cover_image_url').value = d.cover_image_url || '';
-				if(d.categories && d.categories.length){
-					Array.from(document.getElementById('catSelect').options).forEach(o=>{ o.selected = d.categories.includes(Number(o.value)); });
-				}
+				// categories are read-only and not restored from the draft UI
 				easyMDE.value(d.body || '');
 			}
 		} catch(e){ console.warn('Failed to parse draft', e); }
@@ -246,7 +248,7 @@
 				slug: document.getElementById('slug').value,
 				site: document.getElementById('siteSelect').value,
 				author: document.getElementById('authorSelect').value,
-				categories: Array.from(document.getElementById('catSelect').selectedOptions).map(o=>Number(o.value)),
+				// categories are managed from front-matter/exporter; do not send from the writer UI
 				cover_image_url: document.querySelector('[name="cover_image_url"]').value,
 				body: easyMDE.value(),
 				timestamp: new Date().toISOString()
@@ -335,13 +337,13 @@
 		clearInvalid();
 		setSubmitting(true);
 
-		const fd = new FormData(e.target);
-		const categories = Array.from(document.getElementById('catSelect').selectedOptions).map(o=>Number(o.value));
-		const payload = {
+	const fd = new FormData(e.target);
+	// categories control removed from the UI; do not attempt to access it
+	const payload = {
 			title: fd.get('title'),
 			slug: fd.get('slug') || null,
 			site: Number(fd.get('site')),
-			categories,
+			// categories are managed from front-matter/exporter; do not send from the writer UI
 			author: Number(fd.get('author')),
 			status: fd.get('status') || 'draft',
 			published_at: fd.get('published_at') ? new Date(fd.get('published_at')).toISOString() : null,
