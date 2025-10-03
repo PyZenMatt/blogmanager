@@ -29,6 +29,13 @@ def slugify_title(value: str) -> str:
     value = re.sub(r"-+", "-", value)
     return value.strip("-")
 
+# Use Django's slugify when available for consistent slugs
+try:
+    from django.utils.text import slugify as dj_slugify
+except Exception:
+    def dj_slugify(v):
+        return re.sub(r"[^a-z0-9]+", "-", str(v or "").strip().lower()).strip("-")
+
 
 # regex to detect YAML front-matter at start of body
 FRONTMATTER_RE = re.compile(r"^\s*---\s*\n(.*?)\n---\s*(?:\n|$)", re.DOTALL)
@@ -107,13 +114,115 @@ def _front_matter(post, site):
         "date": _select_date(post).strftime("%Y-%m-%d %H:%M:%S"),
     }
 
-    # Only include categories if they exist
-    categories = []
-    if hasattr(post, 'categories') and hasattr(post.categories, 'all'):
-        categories = sorted([c.slug for c in post.categories.all()])
-    # Always include categories key (empty list when none) to make exported
-    # front-matter explicit and consistent for downstream tooling.
+    # Normalize categories and subcluster according to canonical rule:
+    # categories = [cluster-slug, ...] (no subcluster strings)
+    # subcluster = slug or absent
+    def _normalize_categories_and_subcluster(post, fm_body=None):
+        """Return (categories_list, subcluster, audit_msgs, blocked)
+
+        - Prefer explicit Category M2M normalized fields when available.
+        - Accept legacy `cluster/subcluster` in fm_body and normalize.
+        - Remove any items containing '/'.
+        - If normalization impossible (ambiguous subclusters), return blocked=True.
+        """
+        audit = []
+        clusters = []
+        subcluster = None
+
+        # 1) Prefer normalized Category M2M data
+        try:
+            if hasattr(post, 'categories') and hasattr(post.categories, 'all'):
+                for c in post.categories.all():
+                    # Use cluster slug when present
+                    cs = getattr(c, 'cluster_slug', None) or getattr(c, 'slug', None)
+                    ss = getattr(c, 'subcluster_slug', None)
+                    if cs:
+                        if cs not in clusters:
+                            clusters.append(cs)
+                    if ss:
+                        # If multiple different subclusters exist, it's ambiguous
+                        if subcluster and subcluster != ss:
+                            audit.append(f"Ambiguous subclusters on post: existing={subcluster} vs {ss}")
+                            return ([], None, audit, True)
+                        subcluster = ss
+        except Exception:
+            pass
+
+        # 2) If fm_body contains legacy categories, try to normalize
+        if fm_body and isinstance(fm_body, dict):
+            fm_cats = fm_body.get('categories') or fm_body.get('category')
+            if fm_cats:
+                if isinstance(fm_cats, str):
+                    fm_cats = [fm_cats]
+                for itm in fm_cats or []:
+                    if not itm:
+                        continue
+                    itm = str(itm).strip()
+                    if '/' in itm:
+                        # legacy cluster/subcluster format
+                        parts = itm.split('/', 1)
+                        cl = parts[0].strip()
+                        sc = parts[1].strip()
+                        if cl and cl not in clusters:
+                            clusters.append(dj_slugify(cl) or cl)
+                        if sc:
+                            if subcluster and subcluster != dj_slugify(sc):
+                                audit.append(f"Ambiguous subclusters in fm: {subcluster} vs {sc}")
+                                return ([], None, audit, True)
+                            subcluster = dj_slugify(sc) or sc
+                            audit.append(f"Normalized legacy category '{itm}' -> cluster={cl} subcluster={sc}")
+                    else:
+                        # Could be a pure cluster or a stray subcluster; treat as cluster
+                        s = dj_slugify(itm) or itm
+                        if s not in clusters:
+                            clusters.append(s)
+
+            # Also check explicit 'subcluster' key in fm_body
+            fm_sub = fm_body.get('subcluster')
+            if fm_sub:
+                if isinstance(fm_sub, (list, tuple)):
+                    fm_sub_val = fm_sub[0]
+                else:
+                    fm_sub_val = fm_sub
+                fm_sub_val = str(fm_sub_val).strip()
+                if fm_sub_val:
+                    ss_slug = dj_slugify(fm_sub_val)
+                    if subcluster and subcluster != ss_slug:
+                        audit.append(f"Ambiguous subcluster from fm: existing={subcluster} vs {ss_slug}")
+                        return ([], None, audit, True)
+                    subcluster = ss_slug
+                    audit.append(f"Using explicit fm subcluster={fm_sub_val}")
+
+        # Remove any items that still contain '/' (should not happen) and dedupe
+        final_clusters = []
+        for c in clusters:
+            if '/' in c:
+                audit.append(f"Removing invalid category containing '/': {c}")
+                continue
+            if c not in final_clusters:
+                final_clusters.append(c)
+
+        # If no clusters found, default to 'uncategorized'
+        if not final_clusters:
+            final_clusters = ['uncategorized']
+
+        return (final_clusters, subcluster, audit, False)
+
+    categories, detected_subcluster, audit_msgs, blocked = _normalize_categories_and_subcluster(post, fm_body)
+
+    # Audit log if any normalization occurred
+    if audit_msgs:
+        for msg in audit_msgs:
+            logger.info("[export][frontmatter] normalize: %s", msg)
+
+    if blocked:
+        logger.error("[export][validator] Ambiguous or invalid category/subcluster data for post id=%s - export blocked", getattr(post, 'id', None))
+        return ""  # block export by returning empty front-matter
+
     data["categories"] = categories
+    # Only include 'subcluster' key when present
+    if detected_subcluster:
+        data['subcluster'] = detected_subcluster
 
     # Only include canonical URL if it's provided and non-empty
     canonical = getattr(post, "canonical_url", "") or ""
@@ -155,6 +264,9 @@ def _front_matter(post, site):
         merged["date"] = data["date"]
         if "categories" in data:
             merged["categories"] = data["categories"]
+        # Preserve server-derived subcluster if present (canonical mapping)
+        if "subcluster" in data:
+            merged["subcluster"] = data["subcluster"]
         if "canonical" not in merged and "canonical" in data:
             merged["canonical"] = data["canonical"]
         if "description" not in merged and "description" in data:
