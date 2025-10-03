@@ -31,7 +31,9 @@ def slugify_title(value: str) -> str:
 
 # Use Django's slugify when available for consistent slugs
 try:
-    from django.utils.text import slugify as dj_slugify
+    from django.utils.text import slugify as django_slugify
+    def dj_slugify(v):
+        return str(django_slugify(v or ""))
 except Exception:
     def dj_slugify(v):
         return re.sub(r"[^a-z0-9]+", "-", str(v or "").strip().lower()).strip("-")
@@ -41,18 +43,46 @@ except Exception:
 FRONTMATTER_RE = re.compile(r"^\s*---\s*\n(.*?)\n---\s*(?:\n|$)", re.DOTALL)
 
 
+class FrontMatterValidationError(Exception):
+    """Raised when front-matter validation fails and should block export."""
+    pass
+
+
+def _validate_content_encoding(content: str) -> None:
+    """Validate content meets encoding and line ending requirements."""
+    if not content:
+        return
+    
+    # Check for BOM
+    if content.startswith('\ufeff'):
+        raise FrontMatterValidationError("Content contains UTF-8 BOM which is not allowed")
+    
+    # Check for CRLF line endings in front-matter
+    if '\r\n' in content[:1000]:  # Check first 1000 chars where FM would be
+        raise FrontMatterValidationError("Content contains CRLF line endings; only LF is allowed")
+
+
 def _extract_frontmatter_from_body(body: str) -> dict:
-    """Return parsed front-matter dict if present at start of body, else {}."""
+    """Return parsed front-matter dict if present at start of body, else {}.
+    
+    Raises FrontMatterValidationError if content fails validation.
+    """
     import yaml
     if not body:
         return {}
+    
+    # Validate encoding and line endings
+    _validate_content_encoding(body)
+    
     m = FRONTMATTER_RE.match(body)
     if not m:
         return {}
     try:
         return yaml.safe_load(m.group(1)) or {}
-    except Exception:
-        return {}
+    except yaml.YAMLError as e:
+        raise FrontMatterValidationError(f"Invalid YAML in front-matter: {e}")
+    except Exception as e:
+        raise FrontMatterValidationError(f"Failed to parse front-matter: {e}")
 
 
 def _strip_trivial_leading_frontmatter(body: str) -> str:
@@ -97,6 +127,74 @@ def _select_date(post):
     return timezone.now()
 
 
+def _validate_frontmatter_taxonomy(post, fm_body=None):
+    """Validate and extract categories and subcluster from front-matter.
+    
+    Returns (cluster, subcluster, audit_msgs)
+    Raises FrontMatterValidationError if validation fails.
+    """
+    audit = []
+    
+    if not fm_body or not isinstance(fm_body, dict):
+        raise FrontMatterValidationError("No valid front-matter found - front-matter is required for export")
+    
+    # categories must be present and contain exactly one cluster
+    fm_cats = fm_body.get('categories')
+    if not fm_cats:
+        raise FrontMatterValidationError("Missing required 'categories' field in front-matter")
+    
+    if isinstance(fm_cats, str):
+        fm_cats = [fm_cats]
+    elif not isinstance(fm_cats, (list, tuple)):
+        raise FrontMatterValidationError(f"'categories' must be a list or string, got {type(fm_cats).__name__}")
+    
+    if len(fm_cats) != 1:
+        raise FrontMatterValidationError(f"'categories' must contain exactly one cluster, got {len(fm_cats)} items")
+    
+    cluster_raw = fm_cats[0]
+    if not cluster_raw or not str(cluster_raw).strip():
+        raise FrontMatterValidationError("Empty cluster in 'categories' field")
+    
+    cluster = str(cluster_raw).strip()
+    
+    # Reject legacy cluster/subcluster format
+    if '/' in cluster:
+        raise FrontMatterValidationError(f"Invalid cluster '{cluster}' - clusters cannot contain '/' (use separate 'subcluster' field)")
+    
+    # Validate cluster slug format
+    cluster_slug = dj_slugify(cluster)
+    if not cluster_slug or cluster_slug != cluster:
+        raise FrontMatterValidationError(f"Invalid cluster slug '{cluster}' - must be a valid slug (got '{cluster_slug}')")
+    
+    # Validate subcluster if present
+    subcluster = None
+    fm_sub = fm_body.get('subcluster')
+    if fm_sub:
+        if isinstance(fm_sub, (list, tuple)):
+            if len(fm_sub) > 1:
+                raise FrontMatterValidationError(f"'subcluster' field contains multiple values - only one allowed")
+            subcluster_raw = fm_sub[0] if fm_sub else None
+        else:
+            subcluster_raw = fm_sub
+        
+        if subcluster_raw:
+            subcluster = str(subcluster_raw).strip()
+            if '/' in subcluster:
+                raise FrontMatterValidationError(f"Invalid subcluster '{subcluster}' - cannot contain '/'")
+            
+            subcluster_slug = dj_slugify(subcluster)
+            if not subcluster_slug or subcluster_slug != subcluster:
+                raise FrontMatterValidationError(f"Invalid subcluster slug '{subcluster}' - must be a valid slug (got '{subcluster_slug}')")
+            
+            subcluster = subcluster_slug
+    
+    # TODO: Add taxonomy validation against known clusters/subclusters
+    # For now, we accept any valid slug format
+    
+    audit.append(f"Validated FM taxonomy: cluster='{cluster}', subcluster='{subcluster or 'None'}'")        
+    return (cluster, subcluster, audit)
+
+
 def _front_matter(post, site):
     import yaml
     # prefer title from front-matter if present in the body
@@ -114,115 +212,27 @@ def _front_matter(post, site):
         "date": _select_date(post).strftime("%Y-%m-%d %H:%M:%S"),
     }
 
-    # Normalize categories and subcluster according to canonical rule:
-    # categories = [cluster-slug, ...] (no subcluster strings)
-    # subcluster = slug or absent
-    def _normalize_categories_and_subcluster(post, fm_body=None):
-        """Return (categories_list, subcluster, audit_msgs, blocked)
-
-        - Prefer explicit Category M2M normalized fields when available.
-        - Accept legacy `cluster/subcluster` in fm_body and normalize.
-        - Remove any items containing '/'.
-        - If normalization impossible (ambiguous subclusters), return blocked=True.
-        """
-        audit = []
-        clusters = []
-        subcluster = None
-
-        # 1) Prefer normalized Category M2M data
-        try:
-            if hasattr(post, 'categories') and hasattr(post.categories, 'all'):
-                for c in post.categories.all():
-                    # Use cluster slug when present
-                    cs = getattr(c, 'cluster_slug', None) or getattr(c, 'slug', None)
-                    ss = getattr(c, 'subcluster_slug', None)
-                    if cs:
-                        if cs not in clusters:
-                            clusters.append(cs)
-                    if ss:
-                        # If multiple different subclusters exist, it's ambiguous
-                        if subcluster and subcluster != ss:
-                            audit.append(f"Ambiguous subclusters on post: existing={subcluster} vs {ss}")
-                            return ([], None, audit, True)
-                        subcluster = ss
-        except Exception:
-            pass
-
-        # 2) If fm_body contains legacy categories, try to normalize
-        if fm_body and isinstance(fm_body, dict):
-            fm_cats = fm_body.get('categories') or fm_body.get('category')
-            if fm_cats:
-                if isinstance(fm_cats, str):
-                    fm_cats = [fm_cats]
-                for itm in fm_cats or []:
-                    if not itm:
-                        continue
-                    itm = str(itm).strip()
-                    if '/' in itm:
-                        # legacy cluster/subcluster format
-                        parts = itm.split('/', 1)
-                        cl = parts[0].strip()
-                        sc = parts[1].strip()
-                        if cl and cl not in clusters:
-                            clusters.append(dj_slugify(cl) or cl)
-                        if sc:
-                            if subcluster and subcluster != dj_slugify(sc):
-                                audit.append(f"Ambiguous subclusters in fm: {subcluster} vs {sc}")
-                                return ([], None, audit, True)
-                            subcluster = dj_slugify(sc) or sc
-                            audit.append(f"Normalized legacy category '{itm}' -> cluster={cl} subcluster={sc}")
-                    else:
-                        # Could be a pure cluster or a stray subcluster; treat as cluster
-                        s = dj_slugify(itm) or itm
-                        if s not in clusters:
-                            clusters.append(s)
-
-            # Also check explicit 'subcluster' key in fm_body
-            fm_sub = fm_body.get('subcluster')
-            if fm_sub:
-                if isinstance(fm_sub, (list, tuple)):
-                    fm_sub_val = fm_sub[0]
-                else:
-                    fm_sub_val = fm_sub
-                fm_sub_val = str(fm_sub_val).strip()
-                if fm_sub_val:
-                    ss_slug = dj_slugify(fm_sub_val)
-                    if subcluster and subcluster != ss_slug:
-                        audit.append(f"Ambiguous subcluster from fm: existing={subcluster} vs {ss_slug}")
-                        return ([], None, audit, True)
-                    subcluster = ss_slug
-                    audit.append(f"Using explicit fm subcluster={fm_sub_val}")
-
-        # Remove any items that still contain '/' (should not happen) and dedupe
-        final_clusters = []
-        for c in clusters:
-            if '/' in c:
-                audit.append(f"Removing invalid category containing '/': {c}")
-                continue
-            if c not in final_clusters:
-                final_clusters.append(c)
-
-        # If no clusters found, default to 'uncategorized'
-        if not final_clusters:
-            final_clusters = ['uncategorized']
-
-        return (final_clusters, subcluster, audit, False)
-
-    categories, detected_subcluster, audit_msgs, blocked = _normalize_categories_and_subcluster(post, fm_body)
-
-    # Audit log if any normalization occurred
-    if audit_msgs:
+    try:
+        cluster, detected_subcluster, audit_msgs = _validate_frontmatter_taxonomy(post, fm_body)
+        
+        # Log validation results
         for msg in audit_msgs:
-            logger.info("[export][frontmatter] normalize: %s", msg)
-
-    if blocked:
-        logger.error("[export][validator] Ambiguous or invalid category/subcluster data for post id=%s - export blocked", getattr(post, 'id', None))
-        return ""  # block export by returning empty front-matter
-
-    data["categories"] = categories
-    # Only include 'subcluster' key when present
-    if detected_subcluster:
-        data['subcluster'] = detected_subcluster
+            logger.info("[export][frontmatter] validation: %s", msg)
+        
+        # Set canonical categories format: single cluster only
+        data["categories"] = [cluster]
+        
+        # Only include 'subcluster' key when present
+        if detected_subcluster:
+            data['subcluster'] = detected_subcluster
+            
+        logger.info("[export][frontmatter] post_id=%s cluster='%s' subcluster='%s'", 
+                   getattr(post, 'id', None), cluster, detected_subcluster or 'None')
+                   
+    except FrontMatterValidationError as e:
+        logger.error("[export][validator] Front-matter validation failed for post id=%s: %s", 
+                    getattr(post, 'id', None), str(e))
+        raise  # Re-raise to block export completely
 
     # Only include canonical URL if it's provided and non-empty
     canonical = getattr(post, "canonical_url", "") or ""
@@ -332,63 +342,64 @@ def _normalize_leading_frontmatter(content: str) -> str:
     return normalized
 
 
-def build_post_relpath(post, site):
+def build_post_relpath(post, site, fm_data=None):
+    """Build relative path for post based on front-matter routing rules.
+    
+    Path format:
+    - With subcluster: _posts/<cluster>/<subcluster>/YYYY-MM-DD-<slug>.md
+    - Without subcluster: _posts/<cluster>/YYYY-MM-DD-<slug>.md
+    
+    Args:
+        post: Post instance
+        site: Site instance  
+        fm_data: Pre-parsed front-matter dict (optional, will extract if not provided)
+    
+    Returns:
+        str: Relative path for the post file
+        
+    Raises:
+        FrontMatterValidationError: If front-matter validation fails
+    """
+    # Extract front-matter if not provided
+    if fm_data is None:
+        body = getattr(post, "content", "") or getattr(post, "body", "") or ""
+        fm_data = _extract_frontmatter_from_body(body)
+    
+    # Validate and extract taxonomy from front-matter
+    cluster, subcluster, audit_msgs = _validate_frontmatter_taxonomy(post, fm_data)
+    
+    # Log routing decision
+    logger.info("[export][routing] post_id=%s cluster='%s' subcluster='%s'", 
+               getattr(post, 'id', None), cluster, subcluster or 'None')
+    
+    # Build date component
     date = _select_date(post)
+    
+    # Build filename with date prefix
     slug = getattr(post, "slug", None) or slugify_title(getattr(post, "title", ""))
-    posts_dir = (getattr(site, "posts_dir", None) or "_posts").strip("/")
+    if not slug:
+        raise FrontMatterValidationError("Post slug is required for filename generation")
+    
     filename = f"{date.strftime('%Y-%m-%d')}-{slug}.md"
     
-    # Build hierarchical path based on categories and subcluster
-    path_parts = [posts_dir]
+    # Build directory structure
+    posts_dir = (getattr(site, "posts_dir", None) or "_posts").strip("/")
+    path_parts = [posts_dir, cluster]
     
-    # Get categories from post.categories (M2M relation)
-    categories = []
-    if hasattr(post, 'categories') and hasattr(post.categories, 'all'):
-        categories = [c.slug for c in post.categories.all()]
-    
-    # Extract subcluster from front-matter if present
-    subcluster = _extract_subcluster_from_post(post)
-    
-    # Build path: _posts/[cluster]/[subcluster]/filename
-    if categories:
-        # Use first category as main cluster
-        cluster = categories[0]
-        path_parts.append(cluster)
-        
-        if subcluster:
-            path_parts.append(subcluster)
+    if subcluster:
+        path_parts.append(subcluster)
     
     path_parts.append(filename)
-    return os.path.normpath("/".join(path_parts))
+    
+    rel_path = os.path.normpath("/".join(path_parts))
+    
+    logger.info("[export][routing] post_id=%s dest_path='%s'", 
+               getattr(post, 'id', None), rel_path)
+    
+    return rel_path
 
 
-def _extract_subcluster_from_post(post):
-    """Extract subcluster from post front-matter or content."""
-    import re
-    import yaml
-    
-    content = getattr(post, "content", "") or getattr(post, "body", "") or ""
-    
-    # Look for front-matter at the beginning of content
-    # reuse the module-level FRONTMATTER_RE which accepts closing '---' at EOF
-    fm_match = FRONTMATTER_RE.match(content)
-    if not fm_match:
-        return None
-    
-    try:
-        fm_data = yaml.safe_load(fm_match.group(1))
-        if isinstance(fm_data, dict):
-            subcluster = fm_data.get('subcluster')
-            if subcluster:
-                # Handle both string and list formats
-                if isinstance(subcluster, list) and subcluster:
-                    return subcluster[0]
-                elif isinstance(subcluster, str):
-                    return subcluster
-    except Exception:
-        pass
-    
-    return None
+
 
 
 def compute_canonical_url(post, site):
@@ -441,6 +452,54 @@ def _working_tree_clean(cwd):
     return (r.stdout or "").strip() == ""
 
 
+def _handle_file_move(repo_dir, old_path, new_path):
+    """Handle atomic file move when post routing changes.
+    
+    Args:
+        repo_dir: Repository root directory
+        old_path: Current file path (relative to repo_dir)
+        new_path: New file path (relative to repo_dir)
+        
+    Returns:
+        bool: True if file was moved, False if no move needed
+    """
+    if old_path == new_path:
+        return False
+        
+    old_abs = os.path.join(repo_dir, old_path)
+    new_abs = os.path.join(repo_dir, new_path)
+    
+    if not os.path.exists(old_abs):
+        logger.info("[export][move] old_path='%s' does not exist, no move needed", old_path)
+        return False
+    
+    if os.path.exists(new_abs):
+        logger.warning("[export][move] collision: new_path='%s' already exists, removing old file", new_path)
+        os.remove(old_abs)
+        return True
+    
+    # Create destination directory if needed
+    os.makedirs(os.path.dirname(new_abs), exist_ok=True)
+    
+    # Atomic move
+    os.rename(old_abs, new_abs)
+    
+    # Clean up empty directories in old path
+    try:
+        old_dir = os.path.dirname(old_abs)
+        while old_dir != repo_dir and old_dir:
+            if not os.listdir(old_dir):  # Directory is empty
+                os.rmdir(old_dir)
+                old_dir = os.path.dirname(old_dir)
+            else:
+                break
+    except OSError:
+        pass  # Directory not empty or other error, ignore
+    
+    logger.info("[export][move] moved: '%s' -> '%s'", old_path, new_path)
+    return True
+
+
 def _write_atomic(path, content):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = f"{path}.tmp"
@@ -471,7 +530,7 @@ def export_post(post):
     owner = None
     perms = None
     try:
-        if repo_exists:
+        if repo_exists and repo_dir:
             st = os.stat(repo_dir)
             owner = pwd.getpwuid(st.st_uid).pw_name
             perms = oct(st.st_mode & 0o777)
@@ -490,11 +549,51 @@ def export_post(post):
         logger.error("[export] repo_dir invalido: site=%s repo_dir=%r (configura Site.repo_path o BLOG_REPO_BASE)", site_slug, repo_dir)
         return
 
-    # 1) Contenuto e percorso relativo (rispetta site.posts_dir)
-    if hasattr(post, "render_relative_path"):
-        rel_path = post.render_relative_path()
-    else:
-        rel_path = build_post_relpath(post, site)
+    # 1) Build content and validate front-matter first
+    try:
+        # Prefer an instance-defined render_markdown if provided
+        if hasattr(post, "render_markdown") and callable(getattr(post, "render_markdown")):
+            content = post.render_markdown()
+        else:
+            content = render_markdown(post, site)
+    except FrontMatterValidationError as e:
+        logger.error("[export][validator] Front-matter validation failed for post id=%s: %s - export blocked", 
+                    getattr(post, 'id', None), str(e))
+        return
+    except Exception as e:
+        logger.error("[export][error] Failed to render content for post id=%s: %s - export blocked", 
+                    getattr(post, 'id', None), str(e))
+        return
+
+    # 2) Determine new path based on validated front-matter
+    try:
+        body = getattr(post, "content", "") or getattr(post, "body", "") or ""
+        fm_data = _extract_frontmatter_from_body(body)
+        new_rel_path = build_post_relpath(post, site, fm_data)
+    except FrontMatterValidationError as e:
+        logger.error("[export][validator] Path building failed for post id=%s: %s - export blocked", 
+                    getattr(post, 'id', None), str(e))
+        return
+    except Exception as e:
+        logger.error("[export][error] Path building failed for post id=%s: %s - export blocked", 
+                    getattr(post, 'id', None), str(e))
+        return
+
+    # 3) Handle file move if path changed
+    old_rel_path = getattr(post, 'last_export_path', None)
+    moved = False
+    if old_rel_path and old_rel_path != new_rel_path:
+        logger.info("[export][move] post_id=%s path_change: '%s' -> '%s'", 
+                   getattr(post, 'id', None), old_rel_path, new_rel_path)
+        try:
+            moved = _handle_file_move(repo_dir, old_rel_path, new_rel_path)
+        except Exception as e:
+            logger.error("[export][move] Failed to move post id=%s from '%s' to '%s': %s", 
+                        getattr(post, 'id', None), old_rel_path, new_rel_path, str(e))
+            return
+
+    # Use new path for all subsequent operations
+    rel_path = new_rel_path
 
     # Security: ensure rel_path is truly relative and does not escape repo_dir
     if os.path.isabs(rel_path) or rel_path.startswith("..") or ".." + os.path.sep in rel_path:
@@ -529,17 +628,7 @@ def export_post(post):
     except Exception:
         logger.exception("[export][validator] Unexpected validator error for post id=%s; aborting export.", getattr(post, 'id', None))
         return
-    # Prefer an instance-defined render_markdown if provided, otherwise use
-    # the module-level renderer which merges body front-matter correctly and
-    # intentionally does NOT inject the DB post.title into the exported file.
-    if hasattr(post, "render_markdown") and callable(getattr(post, "render_markdown")):
-        content = post.render_markdown()
-    else:
-        content = render_markdown(post, site)
-
-    # Final normalization: coalesce multiple leading front-matter blocks into a
-    # single authoritative block. This protects against double-FM being prepended
-    # by templates or other layers (production export edge-case).
+    # Final normalization: coalesce multiple leading front-matter blocks
     try:
         normed = _normalize_leading_frontmatter(content)
         if normed != content:
@@ -567,8 +656,21 @@ def export_post(post):
         logger.exception("[export][validator] Validator crashed; aborting export for post id=%s", getattr(post, 'id', None))
         return
 
-    # 2) Decisione scrittura
-    need_write = (getattr(post, "export_hash", None) != new_hash) or (not os.path.exists(abs_path)) or (not _is_tracked(repo_dir, rel_path))
+    # 4) Determine if write is needed
+    need_write = (getattr(post, "export_hash", None) != new_hash) or (not os.path.exists(abs_path)) or (not _is_tracked(repo_dir, rel_path)) or moved
+    
+    if moved:
+        logger.info("[export][decision] post_id=%s action=moved_and_update", getattr(post, 'id', None))
+    elif need_write:
+        if getattr(post, "export_hash", None) != new_hash:
+            logger.info("[export][decision] post_id=%s action=update reason=content_changed", getattr(post, 'id', None))
+        elif not os.path.exists(abs_path):
+            logger.info("[export][decision] post_id=%s action=create reason=file_missing", getattr(post, 'id', None))
+        elif not _is_tracked(repo_dir, rel_path):
+            logger.info("[export][decision] post_id=%s action=add reason=not_tracked", getattr(post, 'id', None))
+    else:
+        logger.info("[export][decision] post_id=%s action=skip reason=no_changes", getattr(post, 'id', None))
+        
     committed = False
     if need_write:
         logger.debug(
