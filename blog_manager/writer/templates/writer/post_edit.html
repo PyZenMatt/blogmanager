@@ -60,8 +60,61 @@
     </form>
   </div>
 </div>
+
+<!-- Quick Preview (Unified System) -->
+<div class="card shadow-sm mt-4" id="quick-preview-controls">
+  <div class="card-header bg-light">
+    <h5 class="mb-0">
+      <i class="bi bi-eye"></i> Quick Preview
+      <span class="badge bg-info ms-2">Nuovo</span>
+    </h5>
+  </div>
+  <div class="card-body">
+    <p class="text-muted mb-3">
+      Crea una preview veloce del post singolo su <code>blogmanager-previews</code>.
+      Ideale per verifiche rapide senza PR.
+    </p>
+    
+    <div id="quick-preview-status" class="mb-3">
+      <span class="text-muted small">Nessuna preview attiva</span>
+    </div>
+    
+    <div id="quick-preview-url-area" class="d-none mb-3">
+      <div class="input-group">
+        <input type="text" class="form-control form-control-sm" id="quick-preview-url-input" readonly>
+        <button class="btn btn-outline-secondary btn-sm" type="button" id="copy-preview-url-btn">
+          <i class="bi bi-clipboard"></i>
+        </button>
+        <a href="#" target="_blank" class="btn btn-primary btn-sm" id="visit-preview-btn">
+          <i class="bi bi-box-arrow-up-right"></i> Apri
+        </a>
+      </div>
+    </div>
+    
+    <div class="d-flex gap-2">
+      <button type="button" id="create-quick-preview-btn" class="btn btn-success btn-sm">
+        <i class="bi bi-play-circle"></i> Crea Preview
+      </button>
+      <button type="button" id="delete-quick-preview-btn" class="btn btn-outline-danger btn-sm d-none">
+        <i class="bi bi-trash"></i> Elimina Preview
+      </button>
+    </div>
+    
+    <div id="quick-preview-error" class="alert alert-danger mt-3 d-none"></div>
+    
+    <div class="mt-3">
+      <small class="text-muted">
+        <i class="bi bi-info-circle"></i>
+        Percorso: <code>public/<span id="site-slug-display">...</span>/post/<span id="post-id-display">${postId}</span>/</code>
+      </small>
+    </div>
+  </div>
+</div>
+
+<!-- Preview PR Controls -->
 <script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
   /* Responsive editor: full-width on small screens, constrained on large screens */
@@ -72,6 +125,17 @@
   .editor-fixed .CodeMirror { height: 500px !important; max-height: 500px !important; }
   .editor-fixed .CodeMirror-scroll { overflow: auto !important; }
   textarea#body { resize: vertical; }
+  
+  /* Quick Preview controls styling */
+  #quick-preview-controls {
+    max-width: 1000px;
+    margin: 1.5rem auto;
+  }
+  
+  #quick-preview-url-input {
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+  }
 
   /* Buttons and layout tweaks for small screens */
   @media (max-width: 576px) {
@@ -81,6 +145,7 @@
     .mt-4 .btn { width: 100%; }
     /* Make the preview card full-width */
     #previewAreaEdit { margin-left: 0 !important; margin-right: 0 !important; }
+    #preview-controls { margin-left: 0.5rem; margin-right: 0.5rem; }
   }
 </style>
 </style>
@@ -350,6 +415,234 @@ republishBtn.addEventListener('click', async () => {
   }
 });
 </script>
+
+<!-- Quick Preview (Unified System) JavaScript -->
+<script>
+(function() {
+  let quickPreviewUrl = null;
+  let quickPreviewPath = null;
+  let permanentPreviewUrl = null;  // Stored preview URL from post data
+  
+  function showQuickPreviewError(message) {
+    const errorDiv = document.getElementById('quick-preview-error');
+    errorDiv.textContent = message;
+    errorDiv.classList.remove('d-none');
+  }
+  
+  function hideQuickPreviewError() {
+    document.getElementById('quick-preview-error').classList.add('d-none');
+  }
+  
+  function buildPermanentPreviewUrl() {
+    // Build permanent preview URL based on post ID and site
+    if (!currentSiteId || !postId) return null;
+    
+    // Get site info from sites array
+    const site = sites.find(s => s.id === currentSiteId);
+    if (!site || !site.repo_owner || !site.repo_name) return null;
+    
+    const owner = site.repo_owner.toLowerCase();
+    const repo = site.repo_name;
+    return `https://${owner}.github.io/${repo}/preview/${postId}/`;
+  }
+  
+  function updateQuickPreviewUI(hasPreview = false) {
+    const statusDiv = document.getElementById('quick-preview-status');
+    const urlArea = document.getElementById('quick-preview-url-area');
+    const createBtn = document.getElementById('create-quick-preview-btn');
+    const deleteBtn = document.getElementById('delete-quick-preview-btn');
+    const urlInput = document.getElementById('quick-preview-url-input');
+    const visitBtn = document.getElementById('visit-preview-btn');
+    
+    // Always show permanent URL if we can build it
+    const previewUrl = permanentPreviewUrl || buildPermanentPreviewUrl();
+    
+    if (previewUrl) {
+      urlInput.value = previewUrl;
+      visitBtn.href = previewUrl;
+      urlArea.classList.remove('d-none');
+      
+      if (hasPreview) {
+        // Preview exists
+        statusDiv.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Preview attiva</span>';
+        createBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Aggiorna Preview';
+        deleteBtn.classList.remove('d-none');
+      } else {
+        // No preview yet, but show where it will be
+        statusDiv.innerHTML = '<span class="badge bg-secondary"><i class="bi bi-info-circle"></i> URL permanente</span>';
+        createBtn.innerHTML = '<i class="bi bi-play-circle"></i> Crea Preview';
+        deleteBtn.classList.add('d-none');
+      }
+    } else {
+      // Cannot determine preview URL
+      statusDiv.innerHTML = '<span class="text-muted small">Configura repo per abilitare preview</span>';
+      urlArea.classList.add('d-none');
+      createBtn.disabled = true;
+      deleteBtn.classList.add('d-none');
+    }
+  }
+  
+  async function createQuickPreview() {
+    try {
+      hideQuickPreviewError();
+      
+      const btn = document.getElementById('create-quick-preview-btn');
+      const originalHTML = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creazione...';
+      
+      const res = await WriterAPI.apiFetch(`/api/posts/${postId}/preview/`, {
+        method: 'POST'
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.detail || 'Errore creazione preview');
+      }
+      
+      // Store permanent URL from response
+      if (data.preview_url) {
+        permanentPreviewUrl = data.preview_url;
+      }
+      
+      // Success - update UI
+      updateQuickPreviewUI(true);
+      
+      // Show success message
+      const resultBox = document.getElementById('result');
+      resultBox.innerHTML = `
+        <div class="alert alert-success alert-dismissible fade show">
+          <i class="bi bi-check-circle"></i> Preview creata con successo!
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      `;
+      
+      // Auto-hide after 5 seconds
+      setTimeout(() => {
+        resultBox.innerHTML = '';
+      }, 5000);
+      
+    } catch (e) {
+      showQuickPreviewError(`Errore: ${e.message}`);
+    } finally {
+      const btn = document.getElementById('create-quick-preview-btn');
+      btn.disabled = false;
+      updateQuickPreviewUI(!!permanentPreviewUrl);
+    }
+  }
+  
+  async function deleteQuickPreview() {
+    if (!confirm('Vuoi eliminare questa preview?')) {
+      return;
+    }
+    
+    try {
+      hideQuickPreviewError();
+      
+      const btn = document.getElementById('delete-quick-preview-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Eliminazione...';
+      
+      const res = await WriterAPI.apiFetch(`/api/posts/${postId}/preview/`, {
+        method: 'DELETE'
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.detail || 'Errore eliminazione preview');
+      }
+      
+      // Success - update UI
+      updateQuickPreviewUI(false);
+      
+      // Show success message
+      const resultBox = document.getElementById('result');
+      resultBox.innerHTML = `
+        <div class="alert alert-info alert-dismissible fade show">
+          <i class="bi bi-info-circle"></i> Preview eliminata (status: ${data.status})
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      `;
+      
+      setTimeout(() => {
+        resultBox.innerHTML = '';
+      }, 5000);
+      
+    } catch (e) {
+      showQuickPreviewError(`Errore: ${e.message}`);
+    } finally {
+      const btn = document.getElementById('delete-quick-preview-btn');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-trash"></i> Elimina Preview';
+    }
+  }
+  
+  function copyPreviewUrl() {
+    const input = document.getElementById('quick-preview-url-input');
+    input.select();
+    input.setSelectionRange(0, 99999); // For mobile
+    
+    navigator.clipboard.writeText(input.value).then(() => {
+      const btn = document.getElementById('copy-preview-url-btn');
+      const originalHTML = btn.innerHTML;
+      btn.innerHTML = '<i class="bi bi-check"></i>';
+      setTimeout(() => {
+        btn.innerHTML = originalHTML;
+      }, 2000);
+    }).catch(err => {
+      console.error('Failed to copy:', err);
+    });
+  }
+  
+  function updateSiteSlugDisplay() {
+    // Get site slug from the selected site
+    const siteSelect = document.getElementById('siteSelect');
+    const selectedOption = siteSelect?.options[siteSelect.selectedIndex];
+    const siteName = selectedOption?.text || '...';
+    
+    // Try to extract slug from site name (lowercase, no special chars)
+    const siteSlug = siteName.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    document.getElementById('site-slug-display').textContent = siteSlug || '...';
+  }
+  
+  // Event listeners
+  document.getElementById('create-quick-preview-btn').addEventListener('click', createQuickPreview);
+  document.getElementById('delete-quick-preview-btn').addEventListener('click', deleteQuickPreview);
+  document.getElementById('copy-preview-url-btn').addEventListener('click', copyPreviewUrl);
+  
+  // Update site slug display when site changes
+  document.getElementById('siteSelect')?.addEventListener('change', updateSiteSlugDisplay);
+  
+  // Initialize: load post data and check for existing preview
+  async function initializePreview() {
+    try {
+      // Load post data to get preview_url if exists
+      const res = await WriterAPI.apiFetch(`/api/blog/posts/${postId}/`);
+      if (res.ok) {
+        const postData = await res.json();
+        if (postData.preview_url) {
+          permanentPreviewUrl = postData.preview_url;
+          updateQuickPreviewUI(true);  // Has preview
+        } else {
+          updateQuickPreviewUI(false);  // No preview yet, show permanent URL
+        }
+      } else {
+        updateQuickPreviewUI(false);
+      }
+    } catch (e) {
+      console.warn('Failed to load preview status:', e);
+      updateQuickPreviewUI(false);
+    }
+    updateSiteSlugDisplay();
+  }
+  
+  // Run initialization after page load
+  setTimeout(initializePreview, 1000);
+})();
+</script>
+
 {% endblock %}
 
 <!-- Mobile bottom action bar for editor -->

@@ -1,79 +1,68 @@
 
-# Django
-*.log
-*.pot
-*.pyc
+# ---- Python / Django ----
 __pycache__/
-# Byte-compiled / cache
+# ---- Python / Django ----
 __pycache__/
 *.py[cod]
-
-# Django
+*.egg-info/
 *.log
 db.sqlite3
 *.sqlite3
 *.db
-/static/
-/media/
 
-# Environment files (keep example files committed)
+# ---- Virtualenvs ----
+.venv/
+venv/
+ENV/
+.venvpath
+
+# ---- Local env files (keep .env.example committed) ----
 .env
 !.env.example
 
-# Virtualenvs
-venv/
-.venv/
-ENV/
-
-# Editor / OS
+# ---- Editor & OS ----
 .vscode/
+.idea/
 .DS_Store
 Thumbs.db
-.idea/
 
-# Tests / coverage
-.tox/
+# ---- Tests & coverage ----
 .pytest_cache/
+.tox/
 .coverage
 coverage.xml
 htmlcov/
 
-# Node
-node_modules/
-
-# Misc
+# Pytest outputs / results
 reports/
-uploads/
-scripts/*.log
+docs/
 
-# Secrets
-secrets.json
-secrets.env
-
-# Jekyll tests
-jekyll-test/
-*.swo
-
-#exporteed repos
-expoerted_repos/
-
-cat >> .gitignore << 'GIT'
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-# Ambienti locali
-.venv/
-venv/
-# Test/coverage
-.pytest_cache/
-.coverage
-htmlcov/
-# Build
+# ---- Build & packaging ----
 dist/
 build/
-# Cache varie
+node_modules/
+
+# ---- Caches ----
 .mypy_cache/
 .ruff_cache/
 .cache/
-GIT
+
+# ---- Jekyll / exported repos / artifacts ----
+_site/
+jekyll-test/
+exported_repos/
+
+# ---- Secrets / credentials ----
+secrets.json
+secrets.env
+*.pem
+*.key
+# tokens (ensure not committed)
+GITHUB_TOKEN
+GIT_TOKEN
+
+# ---- Misc ----
+uploads/
+scripts/*.log
+*.swo
+

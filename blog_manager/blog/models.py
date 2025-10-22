@@ -1,6 +1,7 @@
 
 import re
 import unicodedata
+import uuid as uuid_lib
 try:
     from cloudinary_storage.storage import MediaCloudinaryStorage
 except Exception:  # pragma: no cover - fallback se lib non disponibile all'import
@@ -409,6 +410,14 @@ class Post(models.Model):
         null=True,
         blank=True,
         help_text="Percorso del file nel repo Jekyll (es. _posts/YYYY-MM-DD-slug.md)",
+    )
+    
+    # Preview URL (permanent per-post preview location)
+    preview_url = models.URLField(
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text="URL permanente della preview del post (es. https://owner.github.io/repo/preview/625/)",
     )
 
     # Compat alias: exporter usa export_hash ma il campo DB si chiama exported_hash

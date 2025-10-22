@@ -62,6 +62,70 @@ def _validate_content_encoding(content: str) -> None:
         raise FrontMatterValidationError("Content contains CRLF line endings; only LF is allowed")
 
 
+def _normalize_yaml_indentation(body: str) -> str:
+    """
+    Normalize YAML front-matter indentation to fix common issues.
+    
+    Common problems:
+    - Inconsistent indentation (5 spaces instead of 4 for nested values)
+    - Double punctuation (e.g., '??' at end of strings)
+    - Mixed tabs and spaces
+    
+    Returns normalized body with corrected front-matter.
+    """
+    if not body:
+        return body
+    
+    m = FRONTMATTER_RE.match(body)
+    if not m:
+        return body
+    
+    fm_content = m.group(1)
+    lines = fm_content.split('\n')
+    normalized_lines = []
+    
+    for line in lines:
+        # Skip empty lines
+        if not line.strip():
+            normalized_lines.append(line)
+            continue
+        
+        # Count leading spaces
+        stripped = line.lstrip(' ')
+        indent = len(line) - len(stripped)
+        
+        # Fix common indentation issues in YAML lists
+        # Pattern: "  - key: value" (2 spaces for list item)
+        # Pattern: "    nested_key: value" (4 spaces for nested content)
+        # Problem: "     nested_key: value" (5 spaces - incorrect)
+        
+        if stripped.startswith('- '):
+            # List item - should have even indentation (0, 2, 4, etc.)
+            if indent % 2 != 0:
+                indent = (indent // 2) * 2
+                line = ' ' * indent + stripped
+        elif ':' in stripped and not stripped.startswith('#'):
+            # Key-value pair
+            # If indented by odd number >= 3, normalize to nearest even number
+            if indent >= 3 and indent % 2 != 0:
+                # Likely meant to be 4 spaces (nested under list item)
+                indent = 4 if indent == 5 else ((indent + 1) // 2) * 2
+                line = ' ' * indent + stripped
+        
+        # Remove double punctuation at end of quoted strings
+        # Pattern: "text"?? → "text"
+        if stripped.endswith('??'):
+            line = line[:-2]
+        
+        normalized_lines.append(line)
+    
+    # Reconstruct body with normalized front-matter
+    normalized_fm = '\n'.join(normalized_lines)
+    rest_of_body = body[m.end():]
+    
+    return f"---\n{normalized_fm}\n---\n{rest_of_body}"
+
+
 def _extract_frontmatter_from_body(body: str) -> dict:
     """Return parsed front-matter dict if present at start of body, else {}.
     
@@ -73,6 +137,9 @@ def _extract_frontmatter_from_body(body: str) -> dict:
     
     # Validate encoding and line endings
     _validate_content_encoding(body)
+    
+    # Normalize YAML indentation before parsing
+    body = _normalize_yaml_indentation(body)
     
     m = FRONTMATTER_RE.match(body)
     if not m:
@@ -294,9 +361,32 @@ def render_markdown(post, site):
     fm = _front_matter(post, site)
     # Strip any leading front-matter from body because we've merged it above.
     body = getattr(post, "content", "") or getattr(post, "body", "") or ""
+    
+    # Normalize YAML indentation in content before processing
+    body = _normalize_yaml_indentation(body)
+    
     body = _strip_leading_frontmatter(body)
     if not body.endswith("\n"):
         body = body + "\n"
+    # Resolve link shortcodes in the body if feature enabled
+    try:
+        if getattr(settings, 'LINK_RESOLVER_ENABLED', True):
+            # Local import to avoid circular import at module load
+            from .link_resolver import LinkResolver
+
+            resolved_body, errors = LinkResolver.resolve(body, site)
+            if errors:
+                # Hard errors should block export
+                raise FrontMatterValidationError("Link resolution errors: " + "; ".join(errors))
+            body = resolved_body
+    except FrontMatterValidationError:
+        # propagate validation errors
+        raise
+    except Exception:
+        # Any unexpected issues during resolution should be logged but block export conservatively
+        logger.exception("LinkResolver failed while processing post id=%s", getattr(post, 'id', None))
+        raise
+
     return fm + "\n" + body
 
 

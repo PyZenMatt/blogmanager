@@ -222,6 +222,7 @@ class PostSerializer(serializers.ModelSerializer):
             "cover_image_url",
             "canonical_url",
             "repo_path",
+            "preview_url",
             # SEO/meta fields removed — front matter is derived from content only
             "status",
             "reviewed_by",

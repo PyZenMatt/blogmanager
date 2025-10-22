@@ -1,4 +1,13 @@
 import pytest
+from django.conf import settings
+
+
+@pytest.fixture(autouse=True)
+def disable_throttling(monkeypatch):
+    """Disable DRF throttling in tests to avoid rate limit errors."""
+    rest_framework_settings = settings.REST_FRAMEWORK.copy()
+    rest_framework_settings['DEFAULT_THROTTLE_CLASSES'] = []
+    monkeypatch.setattr('rest_framework.settings.api_settings.DEFAULT_THROTTLE_CLASSES', [])
 
 
 def _ensure_permission_classes(monkeypatch, cls, perm):

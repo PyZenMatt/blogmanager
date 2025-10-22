@@ -220,6 +220,10 @@ if (typeof WriterAPI === 'undefined') {
         <a class="btn btn-sm btn-primary" href="/writer/edit/${post.id}/">Edit</a>
         ${ live ? `<a class="btn btn-sm btn-outline-secondary" href="${live}" target="_blank">Live</a>` : ``}
         ${ repoLink || ``}
+        <button class="btn btn-sm btn-info btn-quick-preview" data-id="${post.id}" data-site="${post.site}" title="Quick Preview">
+          <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+          <span class="btn-text">👁️ Preview</span>
+        </button>
         <button class="btn btn-sm btn-secondary btn-republish" data-id="${post.id}" title="Republish">
           <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
           <span class="btn-text">Republish</span>
@@ -265,6 +269,28 @@ if (typeof WriterAPI === 'undefined') {
     `).join('');
 
       // attach action handlers
+      document.querySelectorAll('.btn-quick-preview').forEach(b => {
+        b.addEventListener('click', async (e) => {
+          const id = b.dataset.id;
+          const spinner = b.querySelector('.spinner-border');
+          const text = b.querySelector('.btn-text');
+          spinner.classList.remove('d-none'); text && (text.style.display='none'); b.disabled = true;
+          try {
+            const res = await WriterAPI.apiFetch(`${WriterAPI.API.POSTS}${id}/preview/`, { method: 'POST' });
+            const data = await res.json();
+            if(!res.ok) throw new Error(data.detail || JSON.stringify(data));
+            // Success - open preview in new tab
+            window.open(data.preview_url, '_blank');
+            text.textContent = '✓ Preview';
+            setTimeout(() => { text.textContent = '👁️ Preview'; }, 3000);
+          } catch(err) {
+            alert('Quick Preview failed: ' + err);
+          } finally {
+            spinner.classList.add('d-none'); text && (text.style.display='inline'); b.disabled = false;
+          }
+        });
+      });
+      
       document.querySelectorAll('.btn-republish').forEach(b => {
         b.addEventListener('click', async (e) => {
           const id = b.dataset.id;

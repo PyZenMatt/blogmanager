@@ -1,0 +1,76 @@
+name: PR Preview (Pages per-PR)
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: pr-preview-${{ github.event.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+
+      - name: Install gems
+        run: |
+          bundle config set path vendor/bundle && bundle install --jobs 4 --retry 3
+
+      - name: Prepare preview config
+        run: |
+          PR_NUM=${{ github.event.number }}
+          echo "preview: true" > _preview.yml
+          echo "url: \"https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}\"" >> _preview.yml
+          echo "baseurl: \"/previews/pr-${PR_NUM}\"" >> _preview.yml
+
+      - name: Build Jekyll (include drafts and future)
+        env:
+          JEKYLL_ENV: production
+        run: |
+          bundle exec jekyll build --config _config.yml,_preview.yml --drafts --future --trace
+
+      - name: Deploy to gh-pages as folder previews/pr-<NUM>
+        env:
+          PR_NUM: ${{ github.event.number }}
+        run: |
+          REPO="${{ github.repository }}"
+          GIT_USER="${{ github.actor }}"
+          TMPDIR=$(mktemp -d)
+          mkdir -p $TMPDIR/site
+          cp -R _site/* $TMPDIR/site/
+          cd $TMPDIR
+          git init
+          git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${REPO}.git
+          git fetch origin gh-pages:gh-pages || git fetch origin main:main || true
+          git checkout -b gh-pages origin/gh-pages || git checkout --orphan gh-pages
+          TARGET_DIR="previews/pr-${PR_NUM}"
+          rm -rf "$TARGET_DIR"
+          mkdir -p "$TARGET_DIR"
+          cp -R site/* "$TARGET_DIR/"
+          git add --all
+          git commit -m "ci(preview): deploy preview for PR #${PR_NUM} (action: $GITHUB_RUN_ID)" || true
+          git push origin HEAD:gh-pages --force
+
+      - name: Comment PR with preview URL
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = context.payload.pull_request;
+            if (!pr) return;
+            const number = pr.number;
+            const url = `https://${context.repo.owner}.github.io/${context.repo.repo}/previews/pr-${number}/`;
+            const body = `🔎 Preview for PR #${number}: ${url}\n\nBuild: ${{ github.run_id }}`;
+            await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: number, body });

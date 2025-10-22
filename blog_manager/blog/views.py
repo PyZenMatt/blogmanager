@@ -1,6 +1,7 @@
 
 from rest_framework.exceptions import APIException
 from http import HTTPStatus
+from django.conf import settings
 from django.utils.text import slugify
 from django.utils import timezone
 
@@ -31,6 +32,7 @@ from .serializers import (
     TagSerializer,
 )
 from api.filters import SafeOrderingFilter
+from .github_client import GitHubClient
 
 
 # ENDPOINT API PER UPLOAD IMMAGINI (PostImage)
@@ -398,6 +400,122 @@ class PostViewSet(ModelViewSet):
         post.save(update_fields=["status"])
         ser = PostSerializer(post, context={"request": request})
         return response.Response(ser.data, status=status.HTTP_200_OK)
+    
+    @decorators.action(detail=True, methods=["post", "delete"], url_path="preview", permission_classes=[permissions.IsAuthenticated])
+    def preview(self, request, pk=None):
+        """
+        Manage post preview in site's own Jekyll repository.
+        
+        POST /api/posts/{id}/preview/ - Create/update preview
+        DELETE /api/posts/{id}/preview/ - Delete preview
+        
+        POST Returns:
+        {
+            "preview_url": "https://<owner>.github.io/<repo_name>/preview/<post_id>/",
+            "preview_path": "preview/<post_id>/index.md",
+            "commit_sha": "abc123...",
+            "content_sha": "def456..."
+        }
+        
+        DELETE Returns:
+        {
+            "status": "deleted" | "already_absent",
+            "preview_path": "preview/<post_id>/index.md",
+            "commit_sha": "abc123..." (if deleted)
+        }
+        """
+        from .preview import export_post_to_preview, delete_post_from_preview
+        from .exporter import FrontMatterValidationError
+        
+        post = self.get_object()
+        
+        logger.info(
+            "[preview] Request received: method=%s, post_id=%s, user=%s",
+            request.method, post.id, request.user
+        )
+        
+        # Check if preview is enabled
+        if not getattr(settings, 'PREVIEW_ENABLED', True):
+            return response.Response(
+                {'detail': 'Preview functionality is disabled'},
+                status=status.HTTP_409_CONFLICT
+            )
+        
+        # Handle DELETE request
+        if request.method == 'DELETE':
+            try:
+                result = delete_post_from_preview(post)
+                
+                logger.info(
+                    "[preview] Deleted preview for post_id=%s: status=%s",
+                    post.id, result.get('status')
+                )
+                
+                return response.Response(result, status=status.HTTP_200_OK)
+                
+            except ValueError as e:
+                logger.warning(
+                    "[preview] Configuration error for post_id=%s: %s",
+                    post.id, str(e)
+                )
+                return response.Response(
+                    {'detail': str(e)},
+                    status=status.HTTP_409_CONFLICT
+                )
+            except Exception as e:
+                logger.exception(
+                    "[preview] Failed to delete preview for post_id=%s",
+                    post.id
+                )
+                return response.Response(
+                    {'detail': f'Preview deletion failed: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
+        # Handle POST request (create/update)
+        try:
+            result = export_post_to_preview(post)
+            
+            # Save preview URL permanently on the post
+            preview_url = result.get('preview_url')
+            if preview_url and post.preview_url != preview_url:
+                post.preview_url = preview_url
+                post.save(update_fields=['preview_url'])
+            
+            logger.info(
+                "[preview] Created preview for post_id=%s: %s",
+                post.id, preview_url
+            )
+            
+            return response.Response(result, status=status.HTTP_201_CREATED)
+            
+        except FrontMatterValidationError as e:
+            logger.warning(
+                "[preview] Validation failed for post_id=%s: %s",
+                post.id, str(e)
+            )
+            return response.Response(
+                {'detail': f'Front-matter validation failed: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except ValueError as e:
+            logger.warning(
+                "[preview] Configuration error for post_id=%s: %s",
+                post.id, str(e)
+            )
+            return response.Response(
+                {'detail': str(e)},
+                status=status.HTTP_409_CONFLICT
+            )
+        except Exception as e:
+            logger.exception(
+                "[preview] Failed to create preview for post_id=%s",
+                post.id
+            )
+            return response.Response(
+                {'detail': f'Preview creation failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def get_permissions(self):
         # lettura per tutti, scrittura con permission custom
@@ -513,3 +631,6 @@ class SiteSyncTailAPIView(generics.GenericAPIView):
             return response.Response({'status': 'ok', 'log': tail})
         except Exception:
             return response.Response({'status': 'error', 'log': ''}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
