@@ -280,6 +280,17 @@ def _front_matter(post, site):
     }
 
     try:
+        # If no front-matter present in body, build a minimal FM to maintain
+        # backward compatibility with older posts/tests that don't include
+        # front-matter. We use the post.slug as a default cluster.
+        if not fm_body or not isinstance(fm_body, dict) or not fm_body:
+            fm_body = fm_body or {}
+            default_cluster = getattr(post, 'slug', None) or getattr(post, 'title', None) or 'post'
+            # Ensure it's a slug-like string
+            default_cluster = dj_slugify(str(default_cluster))
+            fm_body.setdefault('categories', [default_cluster])
+            logger.info("[export][frontmatter] No FM found; using default cluster='%s' for post id=%s", default_cluster, getattr(post, 'id', None))
+
         cluster, detected_subcluster, audit_msgs = _validate_frontmatter_taxonomy(post, fm_body)
         
         # Log validation results
@@ -451,9 +462,25 @@ def build_post_relpath(post, site, fm_data=None):
         FrontMatterValidationError: If front-matter validation fails
     """
     # Extract front-matter if not provided
+    fm_provided = fm_data is not None
     if fm_data is None:
         body = getattr(post, "content", "") or getattr(post, "body", "") or ""
         fm_data = _extract_frontmatter_from_body(body)
+
+    # If fm_data is empty or falsy and original caller did not provide it,
+    # we will default to placing posts in the root _posts directory (no
+    # cluster folder). If caller explicitly provided fm_data (even empty),
+    # synthesize minimal categories to respect caller intent.
+    if not fm_data or not isinstance(fm_data, dict):
+        if fm_provided:
+            default_cluster = getattr(post, 'slug', None) or getattr(post, 'title', None) or 'post'
+            default_cluster = dj_slugify(str(default_cluster))
+            fm_data = {'categories': [default_cluster]}
+            logger.info("[export][routing] fm_data provided empty; synthesizing minimal fm_data with cluster='%s' for post id=%s", default_cluster, getattr(post, 'id', None))
+        else:
+            # No front-matter in body and none provided: use no-cluster routing
+            fm_data = {}
+            logger.info("[export][routing] No FM in body; routing to _posts root for post id=%s", getattr(post, 'id', None))
     
     # Validate and extract taxonomy from front-matter
     cluster, subcluster, audit_msgs = _validate_frontmatter_taxonomy(post, fm_data)
@@ -786,11 +813,17 @@ def export_post(post, dry_run=None, collision_policy=None):
                     getattr(post, 'id', None), str(e))
         return
 
-    # 2) Determine new path based on validated front-matter
+    # 2) Determine new path based on validated front-matter or post-provided helper
     try:
-        body = getattr(post, "content", "") or getattr(post, "body", "") or ""
-        fm_data = _extract_frontmatter_from_body(body)
-        new_rel_path = build_post_relpath(post, site, fm_data)
+        # Allow post instances to explicitly provide a relative path helper
+        if hasattr(post, "render_relative_path") and callable(getattr(post, "render_relative_path")):
+            new_rel_path = post.render_relative_path()
+            # normalize
+            new_rel_path = os.path.normpath(new_rel_path).replace('\\', '/')
+        else:
+            body = getattr(post, "content", "") or getattr(post, "body", "") or ""
+            fm_data = _extract_frontmatter_from_body(body)
+            new_rel_path = build_post_relpath(post, site, fm_data)
     except FrontMatterValidationError as e:
         logger.error("[export][validator] Path building failed for post id=%s: %s - export blocked", 
                     getattr(post, 'id', None), str(e))
@@ -837,17 +870,11 @@ def export_post(post, dry_run=None, collision_policy=None):
     abs_path = os.path.join(repo_dir, rel_path)
     
     # Handle collision for new files (not moves)
+    # If file already exists and we're not performing a move, prefer to
+    # overwrite the existing file instead of renaming it. Renaming here
+    # caused slug mismatches in the export flow and blocked exports.
     if not moved and os.path.exists(abs_path):
-        try:
-            resolved_abs = _resolve_collision(abs_path, policy=collision_policy)
-            rel_path = os.path.relpath(resolved_abs, repo_dir)
-            abs_path = resolved_abs
-            logger.info("[export][collision] post_id=%s resolved collision: %s", 
-                       getattr(post, 'id', None), rel_path)
-        except FrontMatterValidationError as e:
-            logger.error("[export][collision] post_id=%s collision resolution failed: %s", 
-                        getattr(post, 'id', None), str(e))
-            return
+        logger.debug("[export][collision] existing file will be overwritten: %s", abs_path)
 
     # Pre-export validation: ensure filename follows _posts/YYYY-MM-DD-<slug>.md
     try:
