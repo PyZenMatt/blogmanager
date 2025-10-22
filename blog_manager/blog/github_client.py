@@ -121,6 +121,68 @@ class GitHubClient:
             raw = getattr(c, "content", None)
         return {"content": raw, "encoding": getattr(c, "encoding", None), "sha": getattr(c, "sha", None)}
 
+    def create_pull_request(self, owner: str, repo: str, head: str, base: str, title: str, body: str = "") -> dict:
+        """Create a pull request from head -> base. Returns minimal info about PR.
+
+        head should be the branch name (e.g., 'preview/pr-123') on the remote repo.
+        """
+        r = self.gh.get_repo(f"{owner}/{repo}")
+        try:
+            pr = r.create_pull(title=title, body=body, head=head, base=base)
+        except GithubException as e:
+            raise _friendly_error(e, f"Error creating PR {owner}/{repo}:{head}->{base}")
+        return {"number": getattr(pr, 'number', None), "html_url": getattr(pr, 'html_url', None)}
+
+    def close_pull_request(self, owner: str, repo: str, pr_number: int) -> dict:
+        """Close a pull request without merging.
+
+        Returns:
+            dict with keys: number, state, html_url
+        
+        Raises:
+            GithubException: If PR not found or API error occurs
+        """
+        r = self.gh.get_repo(f"{owner}/{repo}")
+        try:
+            pr = r.get_pull(pr_number)
+            pr.edit(state='closed')
+        except GithubException as e:
+            raise _friendly_error(e, f"Error closing PR #{pr_number} in {owner}/{repo}")
+        
+        return {
+            "number": pr.number,
+            "state": pr.state,
+            "html_url": pr.html_url
+        }
+
+    def merge_pull_request(self, owner: str, repo: str, pr_number: int, commit_message: str = "") -> dict:
+        """Merge a pull request.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            pr_number: Pull request number
+            commit_message: Optional merge commit message
+
+        Returns:
+            dict with keys: merged (bool), sha (commit sha if merged), message
+        
+        Raises:
+            GithubException: If PR not found, not mergeable, or API error occurs
+        """
+        r = self.gh.get_repo(f"{owner}/{repo}")
+        try:
+            pr = r.get_pull(pr_number)
+            result = pr.merge(commit_message=commit_message or f"Merge pull request #{pr_number}")
+        except GithubException as e:
+            raise _friendly_error(e, f"Error merging PR #{pr_number} in {owner}/{repo}")
+        
+        return {
+            "merged": result.merged,
+            "sha": result.sha if result.merged else None,
+            "message": result.message
+        }
+
     def list_files(self, owner: str, repo: str, path: str = "", branch: str = "main") -> list:
         """
         List repository files under `path` at `branch` recursively.

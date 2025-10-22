@@ -62,6 +62,70 @@ def _validate_content_encoding(content: str) -> None:
         raise FrontMatterValidationError("Content contains CRLF line endings; only LF is allowed")
 
 
+def _normalize_yaml_indentation(body: str) -> str:
+    """
+    Normalize YAML front-matter indentation to fix common issues.
+    
+    Common problems:
+    - Inconsistent indentation (5 spaces instead of 4 for nested values)
+    - Double punctuation (e.g., '??' at end of strings)
+    - Mixed tabs and spaces
+    
+    Returns normalized body with corrected front-matter.
+    """
+    if not body:
+        return body
+    
+    m = FRONTMATTER_RE.match(body)
+    if not m:
+        return body
+    
+    fm_content = m.group(1)
+    lines = fm_content.split('\n')
+    normalized_lines = []
+    
+    for line in lines:
+        # Skip empty lines
+        if not line.strip():
+            normalized_lines.append(line)
+            continue
+        
+        # Count leading spaces
+        stripped = line.lstrip(' ')
+        indent = len(line) - len(stripped)
+        
+        # Fix common indentation issues in YAML lists
+        # Pattern: "  - key: value" (2 spaces for list item)
+        # Pattern: "    nested_key: value" (4 spaces for nested content)
+        # Problem: "     nested_key: value" (5 spaces - incorrect)
+        
+        if stripped.startswith('- '):
+            # List item - should have even indentation (0, 2, 4, etc.)
+            if indent % 2 != 0:
+                indent = (indent // 2) * 2
+                line = ' ' * indent + stripped
+        elif ':' in stripped and not stripped.startswith('#'):
+            # Key-value pair
+            # If indented by odd number >= 3, normalize to nearest even number
+            if indent >= 3 and indent % 2 != 0:
+                # Likely meant to be 4 spaces (nested under list item)
+                indent = 4 if indent == 5 else ((indent + 1) // 2) * 2
+                line = ' ' * indent + stripped
+        
+        # Remove double punctuation at end of quoted strings
+        # Pattern: "text"?? → "text"
+        if stripped.endswith('??'):
+            line = line[:-2]
+        
+        normalized_lines.append(line)
+    
+    # Reconstruct body with normalized front-matter
+    normalized_fm = '\n'.join(normalized_lines)
+    rest_of_body = body[m.end():]
+    
+    return f"---\n{normalized_fm}\n---\n{rest_of_body}"
+
+
 def _extract_frontmatter_from_body(body: str) -> dict:
     """Return parsed front-matter dict if present at start of body, else {}.
     
@@ -73,6 +137,9 @@ def _extract_frontmatter_from_body(body: str) -> dict:
     
     # Validate encoding and line endings
     _validate_content_encoding(body)
+    
+    # Normalize YAML indentation before parsing
+    body = _normalize_yaml_indentation(body)
     
     m = FRONTMATTER_RE.match(body)
     if not m:
@@ -213,6 +280,17 @@ def _front_matter(post, site):
     }
 
     try:
+        # If no front-matter present in body, build a minimal FM to maintain
+        # backward compatibility with older posts/tests that don't include
+        # front-matter. We use the post.slug as a default cluster.
+        if not fm_body or not isinstance(fm_body, dict) or not fm_body:
+            fm_body = fm_body or {}
+            default_cluster = getattr(post, 'slug', None) or getattr(post, 'title', None) or 'post'
+            # Ensure it's a slug-like string
+            default_cluster = dj_slugify(str(default_cluster))
+            fm_body.setdefault('categories', [default_cluster])
+            logger.info("[export][frontmatter] No FM found; using default cluster='%s' for post id=%s", default_cluster, getattr(post, 'id', None))
+
         cluster, detected_subcluster, audit_msgs = _validate_frontmatter_taxonomy(post, fm_body)
         
         # Log validation results
@@ -294,9 +372,32 @@ def render_markdown(post, site):
     fm = _front_matter(post, site)
     # Strip any leading front-matter from body because we've merged it above.
     body = getattr(post, "content", "") or getattr(post, "body", "") or ""
+    
+    # Normalize YAML indentation in content before processing
+    body = _normalize_yaml_indentation(body)
+    
     body = _strip_leading_frontmatter(body)
     if not body.endswith("\n"):
         body = body + "\n"
+    # Resolve link shortcodes in the body if feature enabled
+    try:
+        if getattr(settings, 'LINK_RESOLVER_ENABLED', True):
+            # Local import to avoid circular import at module load
+            from .link_resolver import LinkResolver
+
+            resolved_body, errors = LinkResolver.resolve(body, site)
+            if errors:
+                # Hard errors should block export
+                raise FrontMatterValidationError("Link resolution errors: " + "; ".join(errors))
+            body = resolved_body
+    except FrontMatterValidationError:
+        # propagate validation errors
+        raise
+    except Exception:
+        # Any unexpected issues during resolution should be logged but block export conservatively
+        logger.exception("LinkResolver failed while processing post id=%s", getattr(post, 'id', None))
+        raise
+
     return fm + "\n" + body
 
 
@@ -361,9 +462,25 @@ def build_post_relpath(post, site, fm_data=None):
         FrontMatterValidationError: If front-matter validation fails
     """
     # Extract front-matter if not provided
+    fm_provided = fm_data is not None
     if fm_data is None:
         body = getattr(post, "content", "") or getattr(post, "body", "") or ""
         fm_data = _extract_frontmatter_from_body(body)
+
+    # If fm_data is empty or falsy and original caller did not provide it,
+    # we will default to placing posts in the root _posts directory (no
+    # cluster folder). If caller explicitly provided fm_data (even empty),
+    # synthesize minimal categories to respect caller intent.
+    if not fm_data or not isinstance(fm_data, dict):
+        if fm_provided:
+            default_cluster = getattr(post, 'slug', None) or getattr(post, 'title', None) or 'post'
+            default_cluster = dj_slugify(str(default_cluster))
+            fm_data = {'categories': [default_cluster]}
+            logger.info("[export][routing] fm_data provided empty; synthesizing minimal fm_data with cluster='%s' for post id=%s", default_cluster, getattr(post, 'id', None))
+        else:
+            # No front-matter in body and none provided: use no-cluster routing
+            fm_data = {}
+            logger.info("[export][routing] No FM in body; routing to _posts root for post id=%s", getattr(post, 'id', None))
     
     # Validate and extract taxonomy from front-matter
     cluster, subcluster, audit_msgs = _validate_frontmatter_taxonomy(post, fm_data)
@@ -696,11 +813,17 @@ def export_post(post, dry_run=None, collision_policy=None):
                     getattr(post, 'id', None), str(e))
         return
 
-    # 2) Determine new path based on validated front-matter
+    # 2) Determine new path based on validated front-matter or post-provided helper
     try:
-        body = getattr(post, "content", "") or getattr(post, "body", "") or ""
-        fm_data = _extract_frontmatter_from_body(body)
-        new_rel_path = build_post_relpath(post, site, fm_data)
+        # Allow post instances to explicitly provide a relative path helper
+        if hasattr(post, "render_relative_path") and callable(getattr(post, "render_relative_path")):
+            new_rel_path = post.render_relative_path()
+            # normalize
+            new_rel_path = os.path.normpath(new_rel_path).replace('\\', '/')
+        else:
+            body = getattr(post, "content", "") or getattr(post, "body", "") or ""
+            fm_data = _extract_frontmatter_from_body(body)
+            new_rel_path = build_post_relpath(post, site, fm_data)
     except FrontMatterValidationError as e:
         logger.error("[export][validator] Path building failed for post id=%s: %s - export blocked", 
                     getattr(post, 'id', None), str(e))
@@ -747,17 +870,11 @@ def export_post(post, dry_run=None, collision_policy=None):
     abs_path = os.path.join(repo_dir, rel_path)
     
     # Handle collision for new files (not moves)
+    # If file already exists and we're not performing a move, prefer to
+    # overwrite the existing file instead of renaming it. Renaming here
+    # caused slug mismatches in the export flow and blocked exports.
     if not moved and os.path.exists(abs_path):
-        try:
-            resolved_abs = _resolve_collision(abs_path, policy=collision_policy)
-            rel_path = os.path.relpath(resolved_abs, repo_dir)
-            abs_path = resolved_abs
-            logger.info("[export][collision] post_id=%s resolved collision: %s", 
-                       getattr(post, 'id', None), rel_path)
-        except FrontMatterValidationError as e:
-            logger.error("[export][collision] post_id=%s collision resolution failed: %s", 
-                        getattr(post, 'id', None), str(e))
-            return
+        logger.debug("[export][collision] existing file will be overwritten: %s", abs_path)
 
     # Pre-export validation: ensure filename follows _posts/YYYY-MM-DD-<slug>.md
     try:

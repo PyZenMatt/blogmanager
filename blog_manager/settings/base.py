@@ -228,10 +228,29 @@ EXPORT_COLLISION_POLICY = env.str("EXPORT_COLLISION_POLICY", default="increment"
 # Export dry-run mode (safety default)
 EXPORT_DRY_RUN = env.bool("EXPORT_DRY_RUN", default=False)
 
+# Link resolver and linting configuration
+# CROSS_SITE_POLICY: how to emit links that point to posts in other sites.
+# - 'absolute' (default): emit absolute URL with target site's domain
+# - 'error': treat cross-site links as hard errors during export
+CROSS_SITE_POLICY = env.str("CROSS_SITE_POLICY", default="absolute")
+
+# If True, disallow hardcoded occurrences of the current site's domain inside post bodies
+# and surface them via the `link_lint` management command (default True for safety)
+DISALLOW_HARDCODED_DOMAIN = env.bool("DISALLOW_HARDCODED_DOMAIN", default=True)
+
+# Feature flag to enable link resolving during export. Useful to roll back quickly.
+LINK_RESOLVER_ENABLED = env.bool("LINK_RESOLVER_ENABLED", default=True)
+
 # Media storage
 BLOG_REPO_BASE = env("BLOG_REPO_BASE", default="")
 # Allow dangerous repo deletes from admin UI. Default False for safety.
 ALLOW_REPO_DELETE = env.bool("ALLOW_REPO_DELETE", default=False)
+
+# ===== Preview Configuration =====
+# Feature flag to enable/disable preview functionality
+# Each site uses its own Jekyll repository (Site.repo_owner/repo_name)
+# Preview posts are exported to preview/<post_id>/index.md
+PREVIEW_ENABLED = env.bool("PREVIEW_ENABLED", default=True)
 
 # Logging
 LOGGING = {
