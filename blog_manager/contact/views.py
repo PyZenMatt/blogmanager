@@ -43,11 +43,13 @@ def contact_submit(request):
     name = (payload.get("name") or "").strip()
     email = (payload.get("email") or "").strip()
     message = (payload.get("message") or "").strip()
-    honeypot = payload.get("honeypot", "")
+    # Honeypot field: invisible "website" field that bots tend to fill
+    website_honeypot = payload.get("website", "")
 
-    if honeypot:
+    if website_honeypot:
         logger.warning("Honeypot triggered", extra={"ip": request.META.get("REMOTE_ADDR")})
-        return JsonResponse({"success": False, "error": "Spam detected"}, status=400)
+        # Return 200 OK to not give signals to bots (silently drop the request)
+        return JsonResponse({"status": "ok"}, status=200)
 
     if not name or len(name) > 100:
         logger.info("Invalid name", extra={"name": name})

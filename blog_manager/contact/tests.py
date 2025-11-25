@@ -37,15 +37,34 @@ class ContactSubmitAPITest(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.json()["success"])
 
-    def test_honeypot(self):
+    def test_honeypot_website_field_triggers_silent_drop(self):
+        """Test that filling the 'website' honeypot field silently drops the request."""
         data = {
             "name": "Mario",
             "email": "mario@example.com",
             "message": "Ciao!",
-            "honeypot": "spam",
+            "website": "http://spam.example.com",
         }
         response = self.client.post(
             self.url, data=json.dumps(data), content_type="application/json"
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertFalse(response.json()["success"])
+        # Should return 200 OK to not signal bots
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "ok")
+        # Message should NOT be saved to DB
+        self.assertEqual(ContactMessage.objects.count(), 0)
+
+    def test_honeypot_empty_website_allows_submission(self):
+        """Test that empty 'website' field allows normal form submission."""
+        data = {
+            "name": "Mario",
+            "email": "mario@example.com",
+            "message": "Ciao!",
+            "website": "",
+        }
+        response = self.client.post(
+            self.url, data=json.dumps(data), content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["success"], True)
+        self.assertEqual(ContactMessage.objects.count(), 1)
